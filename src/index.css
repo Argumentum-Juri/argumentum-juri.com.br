@@ -1,0 +1,233 @@
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Merriweather:wght@400;700&family=Playfair+Display:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 36 30% 15%;
+
+    --card: 0 0% 98%;
+    --card-foreground: 36 30% 15%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 36 30% 15%;
+
+    --primary: 35 45% 58%;
+    --primary-foreground: 36 30% 15%;
+
+    --secondary: 36 15% 90%;
+    --secondary-foreground: 36 30% 15%;
+
+    --muted: 36 15% 95%;
+    --muted-foreground: 36 10% 40%;
+
+    --accent: 35 45% 58%;
+    --accent-foreground: 36 30% 15%;
+
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 33 25% 98%;
+
+    --border: 36 15% 85%;
+    --input: 36 15% 85%;
+    --ring: 35 45% 58%;
+
+    --radius: 0.5rem;
+
+    --sidebar-background: 36 30% 98%;
+    --sidebar-foreground: 36 30% 15%;
+    --sidebar-primary: 35 45% 58%;
+    --sidebar-primary-foreground: 36 30% 11%;
+    --sidebar-accent: 36 15% 90%;
+    --sidebar-accent-foreground: 36 30% 15%;
+    --sidebar-border: 36 15% 85%;
+    --sidebar-ring: 35 45% 58%;
+  }
+
+  .dark {
+    --background: 36 30% 8%;
+    --foreground: 33 25% 88%;
+
+    --card: 36 30% 10%;
+    --card-foreground: 33 25% 88%;
+
+    --popover: 36 30% 8%;
+    --popover-foreground: 33 25% 88%;
+
+    --primary: 35 45% 58%;
+    --primary-foreground: 36 30% 11%;
+
+    --secondary: 36 15% 15%;
+    --secondary-foreground: 33 25% 88%;
+
+    --muted: 36 15% 15%;
+    --muted-foreground: 33 10% 70%;
+
+    --accent: 35 45% 58%;
+    --accent-foreground: 36 30% 11%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 33 25% 88%;
+
+    --border: 36 15% 20%;
+    --input: 36 15% 20%;
+    --ring: 35 45% 58%;
+
+    --sidebar-background: 36 30% 10%;
+    --sidebar-foreground: 33 25% 88%;
+    --sidebar-primary: 35 45% 58%;
+    --sidebar-primary-foreground: 36 30% 8%;
+    --sidebar-accent: 36 15% 25%;
+    --sidebar-accent-foreground: 33 25% 88%;
+    --sidebar-border: 36 15% 20%;
+    --sidebar-ring: 35 45% 58%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-serif font-bold text-argumentum-gold;
+  }
+}
+
+.gold-text {
+  @apply text-transparent bg-clip-text bg-gold-gradient;
+}
+
+.petition-status-badge {
+  @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium;
+}
+
+.status-pending {
+  @apply bg-amber-100 text-amber-800;
+}
+
+.status-processing {
+  @apply bg-blue-100 text-blue-800;
+}
+
+.status-review {
+  @apply bg-purple-100 text-purple-800;
+}
+
+.status-complete {
+  @apply bg-green-100 text-green-800;
+}
+
+.status-rejected {
+  @apply bg-red-100 text-red-800;
+}
+
+.legal-card {
+  @apply rounded-lg border border-gray-200 bg-card shadow-sm transition-all hover:shadow-md;
+}
+
+.legal-input {
+  @apply rounded-md border border-gray-300 px-3 py-2 focus:border-argumentum-gold focus:ring-1 focus:ring-argumentum-gold;
+}
+
+.legal-btn-primary {
+  @apply bg-argumentum-gold hover:bg-argumentum-goldLight text-white font-medium rounded-md px-4 py-2 shadow-sm transition-colors;
+}
+
+.legal-btn-secondary {
+  @apply bg-transparent hover:bg-gray-100 text-argumentum-gold border border-argumentum-gold font-medium rounded-md px-4 py-2 shadow-sm transition-colors;
+}
+
+.legal-btn-accent {
+  @apply bg-argumentum-goldDark hover:bg-opacity-90 text-white font-medium rounded-md px-4 py-2 shadow-sm transition-colors;
+}
+
+/* Assegura que os backgrounds de select e dropdown tenham opacidade total */
+.SelectContent,
+[data-radix-popper-content-wrapper] {
+  @apply bg-background !important;
+}
+
+/* Garante que os dropdowns e selects tenham fundo sólido */
+.select-content,
+.dropdown-content,
+div[data-radix-popper-content-wrapper] {
+  @apply bg-background/100 backdrop-blur-none !important;
+}
+
+/* Melhora responsividade de botões em móbile */
+.responsive-button {
+  @apply whitespace-normal h-auto min-h-10 flex items-center justify-center;
+}
+
+/* Corrige problemas de layout em mobiles */
+@media (max-width: 640px) {
+  .dialog-content {
+    @apply p-4 w-[95%] max-h-[95vh] overflow-y-auto;
+  }
+  
+  .dialog-footer {
+    @apply flex-col gap-2;
+  }
+  
+  .dialog-footer button {
+    @apply w-full;
+  }
+}
+
+/* Corrige issues de display com dialogs em mobile */
+@media (max-width: 640px) {
+  [role="dialog"] {
+    @apply max-w-[95vw];
+  }
+}
+
+/* Melhora leitura em selects com opções longas */
+.select-item {
+  @apply break-words whitespace-normal py-2;
+}
+
+/* Melhorias para botões responsivos em landing page */
+.landing-page-btn {
+  @apply whitespace-normal h-auto min-h-10 w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2;
+}
+
+/* Melhorias para cards responsivos */
+.responsive-card {
+  @apply h-full flex flex-col;
+}
+
+.responsive-card-content {
+  @apply flex-grow;
+}
+
+.responsive-card-footer {
+  @apply mt-auto pt-4;
+}
+
+/* Botões de compra responsivos */
+.purchase-button {
+  @apply whitespace-normal h-auto min-h-10 text-sm sm:text-base px-4 py-3 w-full flex justify-center items-center gap-2;
+}
+
+/* Melhora a exibição de erros em modais */
+.modal-error-message {
+  @apply text-sm text-red-600 w-full text-center mt-2;
+}
+
+/* Melhora botões em dispositivos mobile na landing page */
+.landing-cta-button {
+  @apply w-full sm:w-auto whitespace-normal h-auto min-h-10 flex items-center justify-center gap-2 px-6 py-3;
+}
+
+/* Melhora a responsividade de cards do usuário */
+.user-card {
+  @apply p-4 rounded-lg border hover:shadow-md transition-all bg-card;
+}

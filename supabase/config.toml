@@ -1,0 +1,58 @@
+
+project_id = "mefgswdpeellvaggvttc"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "storage", "graphql_public"]
+
+[db]
+port = 54322
+
+[studio]
+port = 54323
+
+[inbucket]
+port = 54324
+
+[storage]
+file_size_limit = "50MiB"
+
+[auth]
+site_url = "http://localhost:5173"
+additional_redirect_urls = ["https://localhost:5173"]
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+refresh_token_reuse_interval = 10
+enable_signup = true
+
+[functions]
+[functions.webhook-stripe]
+verify_jwt = false
+
+[functions.token-checkout]
+verify_jwt = false
+
+[functions.subscription-checkout]
+verify_jwt = false
+
+[functions.subscription-details]
+verify_jwt = false
+
+[functions.stripe-portal]
+verify_jwt = false
+
+[functions.process-monthly-renewals]
+verify_jwt = false
+
+[functions.r2-upload]
+verify_jwt = false
+public_access = true
+
+[functions.r2-delete]
+verify_jwt = false
+public_access = true
+
+[functions.r2-get-signed-url]
+verify_jwt = false
+public_access = true
