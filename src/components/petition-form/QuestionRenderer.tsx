@@ -1,42 +1,51 @@
-
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import { format } from "date-fns"; 
-import { Question, QuestionOption, ProcessPart } from '@/types/petition-form';
+import React from 'react';
+import { Question } from '@/types/petition-form';
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar"; 
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"; 
-import { cn } from "@/lib/utils"; 
-import { CheckCircle, Paperclip, Calendar as CalendarIcon, Loader2 } from 'lucide-react'; 
+import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { CalendarIcon, Plus, X } from 'lucide-react';
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+import { cn } from '@/lib/utils';
 import FileUpload from '@/components/FileUpload';
-import { Dialog, DialogTrigger } from "@/components/ui/dialog";
-import { AddPartyModal } from '@/components/petition-form/ModalForm';
-import { PlusCircle, Trash2, UserCheck, UserX } from 'lucide-react';
-import { Check, ChevronsUpDown } from "lucide-react";
-import {
-    Command,
-    CommandEmpty,
-    CommandGroup,
-    CommandInput,
-    CommandItem,
-    CommandList,
-} from "@/components/ui/command";
+import { ProcessPart } from '@/types/petition-form';
 import { useCitiesByState } from '@/hooks/useCitiesByState';
-import { brazilianStates } from '@/components/petition-form/QuestionOptions';
+import { Spinner } from '@/components/ui/spinner';
 
 interface QuestionRendererProps {
   question: Question;
-  value: any | ProcessPart[];
+  value: any;
   onChange: (field: string, value: any) => void;
   files?: File[];
   onFilesChange?: (files: File[]) => void;
-  allAnswers?: Record<string, any>; // Adicionando acesso a todas as respostas
+  allAnswers: Record<string, any>;
+  hasError?: boolean;
 }
+
+// Função para converter data para formato local YYYY-MM-DD sem deslocamento de timezone
+const formatDateToLocal = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+// Função para converter string YYYY-MM-DD para Date local
+const parseLocalDate = (dateString: string): Date | undefined => {
+  if (!dateString) return undefined;
+  
+  // Parse da string considerando timezone local
+  const [year, month, day] = dateString.split('-').map(Number);
+  if (year && month && day) {
+    return new Date(year, month - 1, day); // month é 0-indexed
+  }
+  
+  return undefined;
+};
 
 export const QuestionRenderer: React.FC<QuestionRendererProps> = ({
   question,
@@ -44,425 +53,302 @@ export const QuestionRenderer: React.FC<QuestionRendererProps> = ({
   onChange,
   files,
   onFilesChange,
-  allAnswers = {}
+  allAnswers,
+  hasError = false
 }) => {
-  // Declarando todos os hooks no início do componente
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [openCombobox, setOpenCombobox] = useState(false);
-  const [searchInputValue, setSearchInputValue] = useState('');
-  
-  // Para filtrar cidades pelo estado selecionado
-  const selectedState = useMemo(() => {
-    if (question.field === 'cidade_distribuicao' && allAnswers && allAnswers['uf_distribuicao']) {
-      return allAnswers['uf_distribuicao'];
-    }
-    return undefined;
-  }, [question.field, allAnswers]);
-  
-  // Buscando cidades se for o campo cidade_distribuicao
-  const { cities, loading: loadingCities, error: citiesError } = useCitiesByState(selectedState);
+  // Hook para carregar cidades dinamicamente baseado no estado
+  const dependentValue = question.dependsOn ? allAnswers[question.dependsOn] : undefined;
+  const { cities, loading, error } = useCitiesByState(
+    question.type === 'dynamic-select' ? dependentValue : undefined
+  );
 
-  // Definindo as opções a serem exibidas (baseado em options estáticas ou cidades carregadas dinamicamente)
-  const displayOptions = useMemo(() => {
-    if (question.dynamicOptions && question.field === 'cidade_distribuicao') {
-      return cities;
-    }
-    return question.options || [];
-  }, [question.dynamicOptions, question.field, question.options, cities]);
-  
-  // Preparando valores atuais para tipos diferentes
-  const currentParts: ProcessPart[] = Array.isArray(value) ? value : [];
-
-  // Funções auxiliares para o gerenciamento comum
-  const handleAddPart = useCallback((newPart: ProcessPart) => {
-    const updatedParts = [...currentParts, newPart];
+  const handleProcessPartChange = (index: number, field: keyof ProcessPart, newValue: any) => {
+    const currentParts = value || [];
+    const updatedParts = [...currentParts];
+    updatedParts[index] = { ...updatedParts[index], [field]: newValue };
     onChange(question.field, updatedParts);
-  }, [currentParts, onChange, question.field]);
+  };
 
-  const handleRemovePart = useCallback((partIdToRemove: string) => {
-    const updatedParts = currentParts.filter(part => part.id !== partIdToRemove);
-    onChange(question.field, updatedParts);
-  }, [currentParts, onChange, question.field]);
-
-  const isOptionSelected = useCallback((optionValue: string | boolean): boolean => {
-    if (typeof optionValue === 'boolean' && typeof value === 'boolean') {
-      return optionValue === value;
-    }
-
-    if (optionValue === 'true' && (value === true || value === 'true')) {
-      return true;
-    }
-
-    if (optionValue === 'false' && (value === false || value === 'false')) {
-      return true;
-    }
-
-    return optionValue === value;
-  }, [value]);
-
-  // Funções auxiliares para o combobox
-  const getComboboxText = useCallback(() => {
-    const options = displayOptions;
-    const selectedValues = question.multiple ? 
-      (Array.isArray(value) ? value : value ? [value] : []) : 
-      (value ? [value] : []);
-    
-    const selectedLabels = selectedValues
-      .map(val => options.find(opt => opt.value === val)?.label || val) // Se não encontrar na lista, usa o próprio valor
-      .filter(Boolean);
-    
-    const displayName = question.label || question.field.replace(/_/g, ' ');
-    
-    return {
-      selectedLabels,
-      displayName
+  const addProcessPart = () => {
+    const currentParts = value || [];
+    const newPart: ProcessPart = {
+      id: crypto.randomUUID(),
+      type: 'Autor',
+      fullName: '',
+      represented: false
     };
-  }, [displayOptions, question.multiple, question.label, question.field, value]);
+    onChange(question.field, [...currentParts, newPart]);
+  };
 
-  const handleComboboxSelect = useCallback((selectedValue: string) => {
-    if (question.multiple) {
-      const selectedValues = Array.isArray(value) ? value : value ? [value] : [];
-      const newValues = selectedValues.includes(selectedValue)
-        ? selectedValues.filter(v => v !== selectedValue)
-        : [...selectedValues, selectedValue];
-      onChange(question.field, newValues);
-    } else {
-      onChange(question.field, selectedValue);
-      setOpenCombobox(false);
-    }
-    setSearchInputValue('');
-  }, [question.multiple, question.field, value, onChange]);
+  const removeProcessPart = (index: number) => {
+    const currentParts = value || [];
+    const updatedParts = currentParts.filter((_: any, i: number) => i !== index);
+    onChange(question.field, updatedParts);
+  };
 
-  const handleInputChange = useCallback((value: string) => {
-    setSearchInputValue(value);
-  }, []);
+  const inputClassName = cn(
+    "w-full",
+    hasError && "border-destructive focus-visible:ring-destructive"
+  );
 
-  const handleCustomSelect = useCallback(() => {
-    // Somente adicionar valor personalizado se permitido pela questão
-    if (searchInputValue && question.allowCustomValues !== false) {
-      handleComboboxSelect(searchInputValue);
-    }
-  }, [searchInputValue, handleComboboxSelect, question.allowCustomValues]);
-
-  const filteredOptions = useMemo(() => {
-    return displayOptions.filter(option =>
-      option.label.toLowerCase().includes(searchInputValue.toLowerCase())
-    );
-  }, [displayOptions, searchInputValue]);
-
-  const valueIsCustom = useMemo(() => {
-    return searchInputValue && 
-           !displayOptions.some(opt => opt.label.toLowerCase() === searchInputValue.toLowerCase()) &&
-           question.allowCustomValues !== false; // Só mostra opção para adicionar se for permitido
-  }, [searchInputValue, displayOptions, question.allowCustomValues]);
+  const textareaClassName = cn(
+    "w-full min-h-[100px] resize-y",
+    hasError && "border-destructive focus-visible:ring-destructive"
+  );
 
   switch (question.type) {
     case 'text':
       return (
         <Input
-          id={question.id}
+          type="text"
           value={value || ''}
           onChange={(e) => onChange(question.field, e.target.value)}
-          placeholder="Digite sua resposta aqui"
-          className="mb-6"
+          placeholder="Digite sua resposta..."
+          className={inputClassName}
         />
       );
 
     case 'textarea':
       return (
         <Textarea
-          id={question.id}
           value={value || ''}
           onChange={(e) => onChange(question.field, e.target.value)}
-          placeholder="Digite sua resposta aqui"
-          className="min-h-[150px] mb-6"
+          placeholder="Digite sua resposta detalhada..."
+          className={textareaClassName}
         />
       );
 
     case 'select':
       return (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
-          {question.options?.map((option) => (
-            <Button
-              key={String(option.value)}
-              type="button"
-              variant={isOptionSelected(option.value) ? "default" : "outline"}
-              className={`justify-start h-auto py-3 text-left ${
-                isOptionSelected(option.value) ? 'bg-primary text-primary-foreground ring-2 ring-primary ring-offset-2' : ''
-              }`}
-              onClick={() => onChange(question.field, option.value)}
-            >
-              <span className="flex items-center">
-                <span className={`mr-3 h-5 w-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
-                  isOptionSelected(option.value)
-                    ? 'bg-primary-foreground border-primary text-primary'
-                    : 'border-muted-foreground'
-                }`}>
-                  {isOptionSelected(option.value) && <CheckCircle className="h-3 w-3" />}
-                </span>
+        <Select
+          value={value || ''}
+          onValueChange={(newValue) => onChange(question.field, newValue)}
+        >
+          <SelectTrigger className={hasError ? "border-destructive" : ""}>
+            <SelectValue placeholder="Selecione uma opção..." />
+          </SelectTrigger>
+          <SelectContent>
+            {question.options?.map((option) => (
+              <SelectItem key={String(option.value)} value={String(option.value)}>
                 {option.label}
-              </span>
-            </Button>
-          ))}
-        </div>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       );
 
     case 'checkbox':
       return (
-        <div className="flex items-center gap-3 mb-6">
-          <Button
-            type="button"
-            variant={value === true ? "default" : "outline"}
-            className={`flex-1 py-3 ${value === true ? 'bg-primary text-primary-foreground ring-2 ring-primary ring-offset-2' : ''}`}
-            onClick={() => onChange(question.field, true)}
+        <div className="flex items-center space-x-2">
+          <Checkbox
+            id={question.field}
+            checked={value || false}
+            onCheckedChange={(checked) => onChange(question.field, checked)}
+          />
+          <label
+            htmlFor={question.field}
+            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
           >
-            <span className="flex items-center justify-center gap-2">
-              <span className={`h-5 w-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
-                value === true
-                  ? 'bg-primary-foreground border-primary text-primary'
-                  : 'border-muted-foreground'
-              }`}>
-                {value === true && <CheckCircle className="h-3 w-3" />}
-              </span>
-              Sim
-            </span>
-          </Button>
-          <Button
-            type="button"
-            variant={value === false ? "default" : "outline"}
-            className={`flex-1 py-3 ${value === false ? 'bg-primary text-primary-foreground ring-2 ring-primary ring-offset-2' : ''}`}
-            onClick={() => onChange(question.field, false)}
-          >
-            <span className="flex items-center justify-center gap-2">
-              <span className={`h-5 w-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
-                value === false
-                  ? 'bg-primary-foreground border-primary text-primary'
-                  : 'border-muted-foreground'
-              }`}>
-                {value === false && <CheckCircle className="h-3 w-3" />}
-              </span>
-              Não
-            </span>
-          </Button>
+            Sim
+          </label>
         </div>
       );
 
-    case 'date': 
-      const dateValue = value ? new Date(value) : undefined;
-      const isValidDate = dateValue && !isNaN(dateValue.getTime());
-
+    case 'date':
       return (
-          <Popover>
+        <Popover>
           <PopoverTrigger asChild>
-              <Button
-              variant={"outline"}
+            <Button
+              variant="outline"
               className={cn(
-                  "w-full justify-start text-left font-normal mb-6", 
-                  !isValidDate && "text-muted-foreground" 
+                "w-full justify-start text-left font-normal",
+                !value && "text-muted-foreground",
+                hasError && "border-destructive"
               )}
-              >
+            >
               <CalendarIcon className="mr-2 h-4 w-4" />
-              {isValidDate ? format(dateValue, "dd/MM/yyyy") : <span>Escolha uma data</span>}
-              </Button>
+              {value ? format(parseLocalDate(value) || new Date(), "PPP", { locale: ptBR }) : "Selecione uma data..."}
+            </Button>
           </PopoverTrigger>
           <PopoverContent className="w-auto p-0" align="start">
-              <Calendar
+            <Calendar
               mode="single"
-              selected={isValidDate ? dateValue : undefined} 
-              onSelect={(selectedDate) => {
-                  onChange(question.field, selectedDate);
+              selected={parseLocalDate(value)}
+              onSelect={(date) => {
+                if (date) {
+                  // Usar formatação local em vez de toISOString() para evitar problemas de timezone
+                  const localDateString = formatDateToLocal(date);
+                  console.log('[DEBUG] Data selecionada:', date, 'Formatada como:', localDateString);
+                  onChange(question.field, localDateString);
+                } else {
+                  onChange(question.field, '');
+                }
               }}
+              disabled={(date) => date > new Date()}
               initialFocus
-              />
+              className="pointer-events-auto"
+            />
           </PopoverContent>
-          </Popover>
+        </Popover>
       );
 
     case 'file':
       return (
-          <div className="mb-6">
-            <FileUpload
-              onFilesChange={onFilesChange}
-              maxFiles={5}
-              maxSizeInMB={10}
-            />
-            {files && files.length > 0 && (
-              <div className="mt-4 space-y-2">
-                <p className="text-sm font-medium text-muted-foreground">Arquivos Anexados:</p>
-                {files.map((file, index) => (
-                  <div key={index} className="flex items-center gap-2 bg-muted/50 p-2 rounded-md text-sm">
-                    <Paperclip className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                    <span className='truncate' title={file.name}>{file.name}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        );
+        <FileUpload
+          onFilesChange={onFilesChange || (() => {})}
+          maxFiles={5}
+          maxSizeInMB={10}
+        />
+      );
+
+    case 'combobox':
+      return (
+        <Select
+          value={value || ''}
+          onValueChange={(newValue) => onChange(question.field, newValue)}
+        >
+          <SelectTrigger className={hasError ? "border-destructive" : ""}>
+            <SelectValue placeholder="Selecione uma opção..." />
+          </SelectTrigger>
+          <SelectContent>
+            {question.options?.map((option) => (
+              <SelectItem key={String(option.value)} value={String(option.value)}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      );
+
+    case 'dynamic-select':
+      return (
+        <div className="space-y-2">
+          <Select
+            value={value || ''}
+            onValueChange={(newValue) => onChange(question.field, newValue)}
+            disabled={loading || !dependentValue}
+          >
+            <SelectTrigger className={cn(hasError && "border-destructive", loading && "opacity-50")}>
+              <SelectValue 
+                placeholder={
+                  !dependentValue 
+                    ? "Primeiro selecione um estado..." 
+                    : loading 
+                    ? "Carregando cidades..." 
+                    : "Selecione uma cidade..."
+                } 
+              />
+            </SelectTrigger>
+            <SelectContent>
+              {cities.map((city) => (
+                <SelectItem key={String(city.value)} value={String(city.value)}>
+                  {city.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          
+          {loading && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Spinner className="h-3 w-3" />
+              Carregando cidades...
+            </div>
+          )}
+          
+          {error && (
+            <div className="text-sm text-destructive">
+              {error}
+            </div>
+          )}
+        </div>
+      );
 
     case 'multiEntry':
+      const processParts = value || [];
       return (
-        <div className="mb-6 space-y-4">
-          {currentParts.length > 0 && (
-            <div className="space-y-3">
-                <p className="text-sm font-medium text-muted-foreground">Partes adicionadas:</p>
-                {currentParts.map((part) => (
-                    <div key={part.id} className="flex items-center justify-between gap-3 p-3 border rounded-md bg-muted/50">
-                        <div className="flex-1 overflow-hidden">
-                            <p className="text-sm font-semibold truncate" title={part.fullName}>{part.fullName}</p>
-                            <p className="text-xs text-muted-foreground">
-                                {part.type} - {part.represented ?
-                                    <span className='inline-flex items-center'><UserCheck className="w-3 h-3 mr-1 text-green-600"/> Representado</span> :
-                                    <span className='inline-flex items-center'><UserX className="w-3 h-3 mr-1 text-red-600"/> Não representado</span>
-                                }
-                            </p>
-                        </div>
-                        <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="text-destructive hover:text-destructive hover:bg-destructive/10 flex-shrink-0"
-                            onClick={() => handleRemovePart(part.id)}
-                            aria-label={`Remover ${part.fullName}`}
-                        >
-                            <Trash2 className="h-4 w-4" />
-                        </Button>
-                    </div>
-                ))}
-            </div>
-          )}
+        <div className="space-y-4">
+          {processParts.map((part: ProcessPart, index: number) => (
+            <div key={part.id} className={cn(
+              "p-4 border rounded-lg space-y-3",
+              hasError && "border-destructive"
+            )}>
+              <div className="flex justify-between items-center">
+                <h4 className="font-medium">Parte {index + 1}</h4>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => removeProcessPart(index)}
+                  className="text-destructive hover:text-destructive/80"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
 
-          <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-            <DialogTrigger asChild>
-                  <Button type="button" variant="outline">
-                    <PlusCircle className="mr-2 h-4 w-4" />
-                    Adicionar Parte
-                  </Button>
-            </DialogTrigger>
-              <AddPartyModal
-                isOpen={isModalOpen}
-                onOpenChange={setIsModalOpen}
-                onAddPart={handleAddPart}
-            />
-          </Dialog>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Tipo de Parte</label>
+                  <Select
+                    value={part.type}
+                    onValueChange={(newValue) => handleProcessPartChange(index, 'type', newValue)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Autor">Autor</SelectItem>
+                      <SelectItem value="Réu">Réu</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
 
-          {currentParts.length === 0 && (
-              <p className="text-sm text-center text-muted-foreground py-4">
-                  Clique em "Adicionar Parte" para incluir as partes do processo. Você incluirá uma parte por vez.
-              </p>
-          )}
-        </div>
-      );
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Nome Completo</label>
+                  <Input
+                    value={part.fullName}
+                    onChange={(e) => handleProcessPartChange(index, 'fullName', e.target.value)}
+                    placeholder="Nome completo da parte"
+                  />
+                </div>
+              </div>
 
-    case 'combobox': {
-      const { selectedLabels, displayName } = getComboboxText();
-      
-      return (
-        <div className="mb-6">
-          {question.dynamicOptions && question.field === 'cidade_distribuicao' && !selectedState && (
-            <div className="text-amber-600 text-sm mb-2">
-              Por favor, selecione primeiro um estado para ver as cidades disponíveis.
-            </div>
-          )}
-          
-          <Popover open={openCombobox} onOpenChange={setOpenCombobox}>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                role="combobox"
-                aria-expanded={openCombobox}
-                className="w-full justify-between font-normal text-left h-auto min-h-[2.5rem] py-2"
-                disabled={question.dynamicOptions && question.field === 'cidade_distribuicao' && !selectedState}
-              >
-                <span className="truncate">
-                  {selectedLabels.length > 0
-                    ? selectedLabels.join(', ')
-                    : searchInputValue || `Selecione ${displayName}...`}
-                </span>
-                {loadingCities ? (
-                  <Loader2 className="ml-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                )}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
-              <Command>
-                <CommandInput
-                  placeholder={`Buscar ${displayName}...`}
-                  value={searchInputValue}
-                  onValueChange={handleInputChange}
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id={`represented-${part.id}`}
+                  checked={part.represented}
+                  onCheckedChange={(checked) => handleProcessPartChange(index, 'represented', checked)}
                 />
-                <CommandList>
-                  {loadingCities && (
-                    <div className="py-6 text-center">
-                      <Loader2 className="h-4 w-4 animate-spin mx-auto" />
-                      <p className="text-sm text-muted-foreground mt-2">Carregando cidades...</p>
-                    </div>
-                  )}
-                  
-                  {!loadingCities && citiesError && (
-                    <div className="py-6 text-center">
-                      <p className="text-sm text-destructive">Erro ao carregar cidades. Tente novamente.</p>
-                    </div>
-                  )}
-                  
-                  {!loadingCities && !citiesError && (
-                    <>
-                      <CommandEmpty>Nenhuma opção encontrada.</CommandEmpty>
-                      {filteredOptions.map((option) => (
-                        <CommandItem
-                          key={String(option.value)}
-                          value={option.label}
-                          onSelect={() => {
-                            handleComboboxSelect(option.value as string);
-                          }}
-                        >
-                          <div className="flex items-center gap-2 flex-1">
-                            <div
-                              className={cn(
-                                "flex h-4 w-4 items-center justify-center rounded-sm border border-primary",
-                                selectedLabels.includes(option.label) ? "bg-primary text-primary-foreground" : "opacity-50"
-                              )}
-                            >
-                              {selectedLabels.includes(option.label) && (
-                                <Check className="h-3 w-3" />
-                              )}
-                            </div>
-                            {option.label}
-                          </div>
-                        </CommandItem>
-                      ))}
-                      
-                      {/* Só mostra a opção de adicionar valores personalizados se for permitido */}
-                      {valueIsCustom && (
-                        <CommandItem
-                          value={searchInputValue}
-                          onSelect={handleCustomSelect}
-                        >
-                          <div className="flex items-center gap-2 flex-1">
-                            <PlusCircle className="h-4 w-4 mr-2 text-muted-foreground" />
-                            Adicionar "{searchInputValue}"
-                          </div>
-                        </CommandItem>
-                      )}
-                    </>
-                  )}
-                </CommandList>
-              </Command>
-            </PopoverContent>
-          </Popover>
-          
-          {question.dynamicOptions && question.field === 'cidade_distribuicao' && selectedState && (
-            <p className="text-xs text-muted-foreground mt-1">
-              Mostrando cidades de {brazilianStates.find(state => state.value === selectedState)?.label}
-            </p>
-          )}
+                <label
+                  htmlFor={`represented-${part.id}`}
+                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                >
+                  Esta é a parte que você representa
+                </label>
+              </div>
+            </div>
+          ))}
+
+          <Button
+            type="button"
+            variant="outline"
+            onClick={addProcessPart}
+            className="w-full"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Adicionar Parte
+          </Button>
         </div>
       );
-    }
 
     default:
-      return null;
+      return (
+        <Input
+          type="text"
+          value={value || ''}
+          onChange={(e) => onChange(question.field, e.target.value)}
+          placeholder="Digite sua resposta..."
+          className={inputClassName}
+        />
+      );
   }
 };

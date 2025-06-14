@@ -16,6 +16,7 @@ interface DocumentsViewProps {
   isLoading?: boolean;
   isAdmin?: boolean;
   onDocumentChange?: () => void;
+  disableGenerateButton?: boolean;
 }
 
 const DocumentsView: React.FC<DocumentsViewProps> = ({
@@ -23,7 +24,8 @@ const DocumentsView: React.FC<DocumentsViewProps> = ({
   documents = [],
   isLoading = false,
   isAdmin = false,
-  onDocumentChange
+  onDocumentChange,
+  disableGenerateButton
 }) => {
   const [showUpload, setShowUpload] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -208,7 +210,7 @@ const DocumentsView: React.FC<DocumentsViewProps> = ({
                    <Button variant="outline" size="sm" onClick={() => setShowUpload(!showUpload)} className="flex items-center">
                        <Upload className="h-4 w-4 mr-1" /> {showUpload ? "Fechar Upload" : "Importar Documento"}
                    </Button>
-                   <Button variant="outline" size="sm" onClick={handleGenerateDocument} disabled={isGenerating} className="flex items-center">
+                   <Button variant="outline" size="sm" onClick={handleGenerateDocument} disabled={isGenerating || disableGenerateButton} className="flex items-center">
                        <FileIcon className="h-4 w-4 mr-1" /> {isGenerating ? "Gerando..." : "Gerar Documento"}
                    </Button>
                </div>

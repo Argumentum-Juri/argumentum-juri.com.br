@@ -1,10 +1,18 @@
 
+// src/services/petition/core/index.ts
 import { getPetition } from './getPetition';
 import { getPetitionDetail } from './getPetitionDetail';
 import { getPetitions, getAllPetitions } from './getPetitions';
-import { createPetition } from './createPetition';
+// Import everything from createPetition.ts
+import { 
+    createPetition, 
+    DEFAULT_PETITION_COST,
+    validateTokensForPetition,
+} from './createPetition'; 
 import { updatePetition, updatePetitionStatus } from './updatePetition';
+import type { CreatePetitionParams, TokenValidationResult } from './createPetition';
 
+// Group in petitionCore if you want to access them via petitionCore.functionName
 export const petitionCore = {
   getPetition,
   getPetitionDetail,
@@ -12,9 +20,11 @@ export const petitionCore = {
   getAllPetitions,
   createPetition,
   updatePetition,
-  updatePetitionStatus
+  updatePetitionStatus,
+  validateTokensForPetition,
 };
 
+// Export individually to allow direct imports
 export {
   getPetition,
   getPetitionDetail,
@@ -22,5 +32,10 @@ export {
   getAllPetitions,
   createPetition,
   updatePetition,
-  updatePetitionStatus
+  updatePetitionStatus,
+  DEFAULT_PETITION_COST,
+  validateTokensForPetition,
 };
+
+// Export types
+export type { CreatePetitionParams, TokenValidationResult };

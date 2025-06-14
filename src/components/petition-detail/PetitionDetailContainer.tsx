@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Petition, PetitionAttachment } from '@/types';
+import { Petition } from '@/types';
 import PetitionHeader from './PetitionHeader';
 import PetitionSkeleton from './PetitionSkeleton';
 import NotFoundError from './NotFoundError';
@@ -10,7 +10,8 @@ import PetitionDetails from './PetitionDetails';
 import { Button } from '@/components/ui/button';
 import { CheckCircle, RefreshCw, X, FileText, History, MessageSquare, Paperclip, List } from 'lucide-react';
 import RejectPetitionDialog from './RejectPetitionDialog';
-import { PetitionStatus, PetitionError } from '@/types/enums';
+import { PetitionStatus } from '@/types/enums';
+import { PetitionError } from '@/types';
 import FormAnswersTab from './FormAnswersTab';
 import AttachmentsView from './AttachmentsView';
 import MessagesView from './MessagesView';
@@ -56,7 +57,7 @@ const PetitionDetailContainer: React.FC<PetitionDetailContainerProps> = ({
   const isMobile = useIsMobile();
 
   if (error) {
-      return <div>Erro ao carregar petição: {error.message}</div>;
+      return <div className="p-4">Erro ao carregar petição: {error.message}</div>;
   }
 
   if (isLoading) {
@@ -74,39 +75,39 @@ const PetitionDetailContainer: React.FC<PetitionDetailContainerProps> = ({
   // Pega documentos e anexos do objeto petition
   const attachments = petition.attachments || [];
 
-  // Opções de tabs disponíveis
-  const tabOptions = [
-    { value: "documents", label: "Documentos", icon: <FileText className="h-4 w-4" /> },
-    { value: "answers", label: "Detalhes", icon: <List className="h-4 w-4" /> },
-    { value: "attachments", label: "Anexos", icon: <Paperclip className="h-4 w-4" /> },
-    { value: "messages", label: "Mensagens", icon: <MessageSquare className="h-4 w-4" /> },
-    { value: "history", label: "Histórico", icon: <History className="h-4 w-4" /> },
-  ];
+  const handleTabChange = (value: string) => {
+    setActiveTab(value as any);
+  };
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
-      <div className="flex justify-between items-center">
+    <div className="space-y-4 md:space-y-6 max-w-7xl mx-auto">
+      <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
         <PetitionHeader petition={petition} isLoading={isLoading} hideId={hideId} />
-         {onRefresh && (
-            <Button variant="outline" size="icon" onClick={onRefresh} title="Atualizar dados">
-                <RefreshCw className="h-4 w-4" />
-            </Button>
-         )}
+        {onRefresh && (
+          <Button 
+            variant="outline" 
+            size="icon" 
+            onClick={onRefresh} 
+            title="Atualizar dados"
+            className="self-end md:self-auto"
+          >
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+        )}
       </div>
 
       <>
-
-        <div className="mb-6">
+        <div className="mb-4 md:mb-6">
           <h2 className="text-lg font-semibold mb-3">Detalhes da Solicitação</h2>
           <PetitionDetails petition={petition} hideId={hideId} />
         </div>
 
         {isUnderReview && canApproveReject && (
-          <div className="flex space-x-4 mb-6">
+          <div className="flex flex-col sm:flex-row gap-3 mb-4 md:mb-6">
             <Button 
               onClick={handleApprovePetition} 
               disabled={approveLoading}
-              className="bg-green-600 hover:bg-green-700 text-white"
+              className="bg-green-600 hover:bg-green-700 text-white w-full sm:w-auto"
             >
               {approveLoading ? (
                 <>
@@ -125,6 +126,7 @@ const PetitionDetailContainer: React.FC<PetitionDetailContainerProps> = ({
               variant="destructive" 
               onClick={() => setShowRejectDialog(true)}
               disabled={rejectLoading}
+              className="w-full sm:w-auto"
             >
               {rejectLoading ? (
                 <>
@@ -141,70 +143,44 @@ const PetitionDetailContainer: React.FC<PetitionDetailContainerProps> = ({
           </div>
         )}
 
-        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "documents" | "answers" | "attachments" | "messages" | "history")}>
-          {isMobile ? (
-            <div className="mb-4">
-              <Select value={activeTab} onValueChange={(value) => setActiveTab(value as any)}>
-                <SelectTrigger className="w-full">
-                  <SelectValue>
-                    <div className="flex items-center gap-2">
-                      {tabOptions.find(tab => tab.value === activeTab)?.icon}
-                      {tabOptions.find(tab => tab.value === activeTab)?.label}
-                    </div>
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent className="bg-background">
-                  {tabOptions.map((tab) => (
-                    <SelectItem key={tab.value} value={tab.value}>
-                      <div className="flex items-center gap-2">
-                        {tab.icon}
-                        {tab.label}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          ) : (
-            <TabsList className="grid w-full grid-cols-5">
-              {tabOptions.map((tab) => (
-                <TabsTrigger key={tab.value} value={tab.value} className="flex items-center gap-2">
-                  {tab.icon}
-                  {tab.label}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          )}
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
+          <PetitionTabs
+            showDocumentsTabs={showDocumentsTabs}
+            activeTab={activeTab}
+            onTabChange={handleTabChange}
+          />
 
-          <TabsContent value="documents">
-              <DocumentsView
-                  petitionId={petition.id}
-                  documents={documents || []}
-                  isLoading={false}
-                  isAdmin={isAdmin}
-                  onDocumentChange={onRefresh}
-              />
-          </TabsContent>
+          <div className="mt-4">
+            <TabsContent value="documents" className="m-0">
+                <DocumentsView
+                    petitionId={petition.id}
+                    documents={documents || []}
+                    isLoading={false}
+                    isAdmin={isAdmin}
+                    onDocumentChange={onRefresh}
+                />
+            </TabsContent>
 
-          <TabsContent value="answers">
-              <FormAnswersTab formAnswers={petition.form_answers || {}} />
-          </TabsContent>
+            <TabsContent value="answers" className="m-0">
+                <FormAnswersTab formAnswers={petition.form_answers || {}} />
+            </TabsContent>
 
-          <TabsContent value="attachments">
-              <AttachmentsView
-                  petition={petition}
-                  onAttachmentChange={onRefresh}
-                  isAdmin={isAdmin}
-              />
-          </TabsContent>
+            <TabsContent value="attachments" className="m-0">
+                <AttachmentsView
+                    petition={petition}
+                    onAttachmentChange={onRefresh}
+                    isAdmin={isAdmin}
+                />
+            </TabsContent>
 
-          <TabsContent value="messages">
-              <MessagesView petitionId={petition.id} />
-          </TabsContent>
+            <TabsContent value="messages" className="m-0">
+                <MessagesView petitionId={petition.id} />
+            </TabsContent>
 
-          <TabsContent value="history">
-              <HistoryView petition={petition} />
-          </TabsContent>
+            <TabsContent value="history" className="m-0">
+                <HistoryView petition={petition} />
+            </TabsContent>
+          </div>
         </Tabs>
 
         <RejectPetitionDialog

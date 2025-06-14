@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState } from "react";
-import { usePetitions } from "@/hooks/use-petitions";
+import { usePetitions } from "@/hooks/usePetitions";
 import PetitionListHeader from "./petition-list/PetitionListHeader";
 import EmptyState from "./petition-list/EmptyState";
 import PetitionListSkeleton from "./petition-list/PetitionListSkeleton";
@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Link } from "react-router-dom";
-import { FileText, Search, Eye, Filter, ArrowUpDown, Plus, CheckCircle, Clock, AlertCircle } from "lucide-react";
+import { FileText, Search, Eye, Filter, ArrowUpDown, Plus, CheckCircle, Clock, AlertCircle, RefreshCw } from "lucide-react";
 import { Petition, PetitionStatus } from "@/types";
 import { formatDate } from '@/utils/formatDate';
 import StatusBadge from "./StatusBadge";
@@ -24,7 +24,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 const PetitionList: React.FC = () => {
-  const { petitions, isLoading, error } = usePetitions();
+  const { petitions, isLoading, error, refreshPetitions } = usePetitions();
   const [filteredPetitions, setFilteredPetitions] = useState<Petition[]>([]);
   const [sortOrder, setSortOrder] = useState<string>("newest");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -131,12 +131,23 @@ const PetitionList: React.FC = () => {
             <h1 className="text-3xl font-bold text-primary">Minhas Petições</h1>
             <p className="text-muted-foreground mt-1">Gerencie e acompanhe todas as suas petições jurídicas</p>
           </div>
-          <Button asChild size="lg" className="flex items-center gap-2 mt-4 md:mt-0">
-            <Link to="/petitions/new">
-              <Plus className="h-4 w-4" />
-              Nova Petição
-            </Link>
-          </Button>
+          <div className="flex gap-2 mt-4 md:mt-0">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={refreshPetitions}
+              disabled={isLoading}
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+              Atualizar
+            </Button>
+            <Button asChild size="lg" className="flex items-center gap-2">
+              <Link to="/petitions/new">
+                <Plus className="h-4 w-4" />
+                Nova Petição
+              </Link>
+            </Button>
+          </div>
         </div>
         
         <Card className="mb-6 overflow-hidden">
@@ -323,7 +334,13 @@ const PetitionList: React.FC = () => {
 
             {error && (
               <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-md text-red-600">
-                <p>Erro ao carregar petições: {error.message}</p>
+                <div className="flex items-center justify-between">
+                  <p>Erro ao carregar petições: {error.message}</p>
+                  <Button onClick={refreshPetitions} variant="outline" size="sm">
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Tentar Novamente
+                  </Button>
+                </div>
               </div>
             )}
           </CardContent>

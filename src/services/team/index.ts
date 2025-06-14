@@ -7,7 +7,14 @@ import {
   deleteTeam, 
   getMyTeams 
 } from './teamOperations';
-import { getTeamMembers } from './memberOperations';
+import { 
+  getTeamMembers,
+  isTeamOwner,
+  removeTeamMember,
+  updateTeamMemberRole,
+  addTeamMember,
+  isTeamMember
+} from './memberOperations';
 import { 
   inviteToTeam, 
   getMyInvites, 
@@ -30,6 +37,11 @@ export {
   
   // Team member operations
   getTeamMembers,
+  isTeamOwner,
+  removeTeamMember,
+  updateTeamMemberRole,
+  addTeamMember,
+  isTeamMember,
   
   // Invite operations
   inviteToTeam,
@@ -48,6 +60,11 @@ export const teamService = {
   deleteTeam,
   getMyTeams,
   getTeamMembers,
+  isTeamOwner,
+  removeTeamMember,
+  updateTeamMemberRole,
+  addTeamMember,
+  isTeamMember,
   inviteToTeam,
   getMyInvites,
   respondToInvite,

@@ -1,11 +1,22 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from "@/components/ui/button";
 import ChatPetitionForm from "@/components/ChatPetitionForm";
-import { HelpCircle, FileText, AlertCircle, Coins, MessageSquareDashedIcon, BookOpen, Users, FileCheck, ArrowRight, CalendarClock, Paperclip } from 'lucide-react'; 
+import { 
+  HelpCircle, 
+  FileText, 
+  Coins, 
+  MessageSquareDashedIcon, 
+  BookOpen, 
+  Users, 
+  FileCheck, 
+  ArrowRight, 
+  CalendarClock, 
+  Paperclip,
+  Loader2, 
+  AlertCircle as AlertCircleIcon 
+} from 'lucide-react'; 
 import { useNavigate } from 'react-router-dom';
-import { tokenService } from '@/services/tokenService';
-import { getPetitionTokenCost } from '@/services/petition/core/createPetition';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -18,72 +29,150 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
-const PetitionFormPage = () => {
+// Hooks e Serviços
+import { useAuth } from '@/contexts/AuthContext';     
+import { tokenService } from '@/services/tokenService'; 
+// DEFAULT_PETITION_COST é usado diretamente, getPetitionTokenCost removido se for igual
+import { DEFAULT_PETITION_COST } from '@/services/petition';    
+
+const PetitionFormPage: React.FC = () => {
   const navigate = useNavigate();
-  const [tokenBalance, setTokenBalance] = useState<number | null>(null);
-  const [requiredTokens, setRequiredTokens] = useState<number>(16);
-  const [loading, setLoading] = useState(true);
+  const { user: currentUser, isLoading: authLoading, teamId, activeTeam, teamLoading } = useAuth(); 
+
+  const [teamTokenBalance, setTeamTokenBalance] = useState<number | null>(null);
+  const [loadingTeamBalance, setLoadingTeamBalance] = useState<boolean>(false);
+  // Simplificação: requiredTokens é agora diretamente DEFAULT_PETITION_COST
+  const [requiredTokens] = useState<number>(DEFAULT_PETITION_COST); 
+  const [pageLoading, setPageLoading] = useState<boolean>(true);
+  const [errorState, setErrorState] = useState<string | null>(null);
+
+  // Função para buscar/atualizar saldo do time
+  const fetchTeamBalance = useCallback(async () => {
+    if (!teamId || !currentUser) {
+      if (currentUser && !teamId && !teamLoading) {
+         setErrorState("Nenhuma equipe ativa encontrada. O saldo do time não pode ser verificado.");
+         toast.error("Nenhuma equipe ativa encontrada para verificar o saldo de tokens.", {id: "no-active-team-balance"});
+      }
+      setTeamTokenBalance(null);
+      setLoadingTeamBalance(false); // Certificar que o loading para se não houver time
+      return;
+    }
+
+    setLoadingTeamBalance(true);
+    setErrorState(null);
+    try {
+      const balance = await tokenService.getTeamTokenBalance(teamId);
+      setTeamTokenBalance(balance);
+    } catch (error) {
+      console.error(`Erro ao buscar saldo do time ${teamId}:`, error);
+      toast.error("Falha ao buscar saldo do time.", { id: "team-balance-fetch-error" });
+      setTeamTokenBalance(null);
+      setErrorState("Falha ao buscar saldo do time.");
+    } finally {
+      setLoadingTeamBalance(false);
+    }
+  }, [teamId, currentUser, teamLoading]);
 
   useEffect(() => {
-    const checkTokens = async () => {
-      try {
-        setLoading(true);
-        // Get current token balance
-        const balance = await tokenService.getTokenBalance();
-        setTokenBalance(balance);
-        
-        // Get required tokens for petition
-        const cost = await getPetitionTokenCost();
-        setRequiredTokens(cost);
-        
-        // If not enough tokens, show warning toast and redirect after delay
-        if (balance < cost) {
-          toast.warning(
-            'Saldo insuficiente de tokens', 
-            { description: `Você precisa de pelo menos ${cost} tokens para criar uma petição.` }
-          );
-          
-          // Redirect to token store after a short delay
-          setTimeout(() => {
-            navigate('/tokens/store');
-          }, 2000);
-        }
-      } catch (error) {
-        console.error('Erro ao verificar saldo de tokens:', error);
-      } finally {
-        setLoading(false);
+    setPageLoading(authLoading || teamLoading || loadingTeamBalance);
+  }, [authLoading, teamLoading, loadingTeamBalance]);
+
+  useEffect(() => {
+    // Realiza as buscas iniciais
+    if (!authLoading && !teamLoading) { // Somente após auth e team context carregarem
+      if (currentUser && teamId) { 
+        fetchTeamBalance();
+      } else if (currentUser && !teamId) {
+        // Se usuário existe, carregamento do time terminou, mas não há time ativo
+        setErrorState("Equipe ativa não encontrada. Não é possível prosseguir.");
+        toast.error("Equipe ativa não identificada.", {id: "petitionform-no-team"});
+        setPageLoading(false); 
+      } else if (!currentUser) {
+        setPageLoading(false); 
       }
-    };
+    }
+  }, [authLoading, teamLoading, currentUser, teamId, fetchTeamBalance]);
 
-    checkTokens();
-  }, [navigate]);
 
-  // Don't render anything if checking balance or not enough tokens
-  if (loading) {
+  useEffect(() => {
+    if (!pageLoading && currentUser) { 
+      if (teamId && teamTokenBalance !== null && teamTokenBalance < requiredTokens) {
+        toast.warning(
+          'Saldo do time insuficiente', 
+          { 
+            id: "insufficient-team-tokens-toast",
+            description: `O time "${activeTeam?.name || teamId}" precisa de ${requiredTokens} tokens. Saldo atual do proprietário: ${teamTokenBalance} tokens.`,
+            action: { label: 'Adquirir Tokens', onClick: () => navigate('/tokens/store') }
+          }
+        );
+      } else if (!teamId && !errorState) { 
+        setErrorState("Nenhuma equipe ativa para verificar o saldo de tokens.");
+        toast.error("Nenhuma equipe ativa selecionada.", {id: "no-active-team-final-check"});
+      }
+    }
+  }, [pageLoading, currentUser, teamId, activeTeam?.name, teamTokenBalance, requiredTokens, navigate, errorState]);
+
+  if (pageLoading) {
     return (
       <div className="min-h-screen py-10 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-background to-muted/30 flex items-center justify-center">
         <div className="text-center">
-          <div className="inline-block animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mb-4"></div>
-          <p>Verificando seu saldo de tokens...</p>
+          <Loader2 className="inline-block animate-spin h-10 w-10 text-primary mb-4" />
+          <p className="text-lg text-muted-foreground">Carregando informações...</p>
         </div>
       </div>
     );
   }
 
-  // Check if token balance is insufficient after loading - redirect to token store
-  if (tokenBalance !== null && tokenBalance < requiredTokens) {
+  if (!currentUser) { 
+     navigate('/auth/login', { replace: true, state: { from: '/petitions/new' } });
+     return null; 
+  }
+
+  if (errorState) {
     return (
       <div className="min-h-screen py-10 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-background to-muted/30 flex items-center justify-center">
-        <div className="max-w-md mx-auto text-center p-6 bg-white dark:bg-gray-800 rounded-lg shadow-lg">
-          <AlertCircle className="h-12 w-12 text-amber-500 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold mb-2">Saldo insuficiente de tokens</h2>
+        <div className="max-w-md mx-auto text-center p-6 bg-card rounded-lg shadow-xl">
+          <AlertCircleIcon className="h-12 w-12 text-destructive mx-auto mb-4" />
+          <h2 className="text-2xl font-bold mb-2 text-card-foreground">Erro ao Carregar</h2>
+          <p className="mb-4 text-muted-foreground">{errorState}</p>
+          <Button onClick={() => navigate('/')} className="w-full">
+            Voltar para o Início
+          </Button>
+        </div>
+      </div>
+    );
+  }
+  
+  if (!teamId) {
+    return (
+      <div className="min-h-screen py-10 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-background to-muted/30 flex items-center justify-center">
+        <div className="max-w-md mx-auto text-center p-6 bg-card rounded-lg shadow-xl">
+          <AlertCircleIcon className="h-12 w-12 text-destructive mx-auto mb-4" />
+          <h2 className="text-2xl font-bold mb-2 text-card-foreground">Equipe Não Encontrada</h2>
           <p className="mb-4 text-muted-foreground">
-            Você precisa de pelo menos {requiredTokens} tokens para criar uma petição. 
-            Seu saldo atual é de {tokenBalance} tokens.
+            Não foi possível identificar sua equipe ativa. Por favor, verifique suas configurações de equipe.
+          </p>
+          <Button onClick={() => navigate('/teams')} className="w-full">
+            Gerenciar Equipes
+          </Button>
+        </div>
+      </div>
+    );
+  }
+  
+  if (teamTokenBalance !== null && teamTokenBalance < requiredTokens) {
+    return (
+      <div className="min-h-screen py-10 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-background to-muted/30 flex items-center justify-center">
+        <div className="max-w-md mx-auto text-center p-6 bg-card rounded-lg shadow-xl">
+          <AlertCircleIcon className="h-12 w-12 text-amber-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold mb-2 text-card-foreground">Saldo do Time Insuficiente</h2>
+          <p className="mb-4 text-muted-foreground">
+            Sua equipe ("{activeTeam?.name || teamId}") precisa de pelo menos {requiredTokens} tokens para criar uma petição. 
+            O saldo atual (do proprietário da equipe) é de {teamTokenBalance} tokens.
           </p>
           <Button onClick={() => navigate('/tokens/store')} className="w-full">
             <Coins className="mr-2 h-4 w-4" />
-            Comprar tokens
+            Comprar tokens para o Time
           </Button>
         </div>
       </div>
@@ -97,7 +186,7 @@ const PetitionFormPage = () => {
           <div>
             <h1 className="text-4xl font-bold text-primary">Nova Petição</h1>
             <p className="mt-3 text-muted-foreground">
-              Responda às perguntas a seguir para criar sua nova petição jurídica personalizada.
+              Utilize nosso assistente inteligente para criar sua nova petição jurídica personalizada.
             </p>
           </div>
           
@@ -153,12 +242,8 @@ const PetitionFormPage = () => {
                       contestação, recurso, etc.). Isso permite direcionar sua solicitação ao especialista adequado e 
                       formatar o documento de acordo com as especificidades de cada ramo jurídico.
                     </p>
-                    <div className="mt-2 p-2 bg-muted/30 rounded text-xs">
-                      <strong>Áreas disponíveis:</strong> Civil, Trabalhista, Tributário, Previdenciário, Penal, 
-                      Administrativo, Consumidor, Família e Sucessões, entre outras.
-                    </div>
                   </div>
-                  
+
                   <div className="p-3 bg-muted/20 rounded-lg">
                     <h3 className="font-medium text-primary flex items-center gap-2">
                       <Users className="h-4 w-4" /> Partes do Processo
@@ -189,9 +274,6 @@ const PetitionFormPage = () => {
                       Adicione documentos que fundamentam seu pedido, como contratos, notificações, provas ou documentos pessoais.
                       Certifique-se que os arquivos estejam legíveis e em formato apropriado (PDF, DOC, DOCX ou imagens).
                     </p>
-                    <div className="mt-2 p-2 bg-muted/30 rounded text-xs">
-                      <strong>Tipos de arquivos aceitos:</strong> PDF, DOC, DOCX, JPG, PNG (tamanho máximo: 10MB por arquivo)
-                    </div>
                   </div>
                   
                   <div className="p-3 bg-muted/20 rounded-lg">
@@ -220,8 +302,9 @@ const PetitionFormPage = () => {
                       <Coins className="h-4 w-4" /> Custo da Petição
                     </h3>
                     <p className="text-sm text-muted-foreground">
-                      A criação de uma nova petição custa {requiredTokens} tokens. Estes tokens serão deduzidos do seu saldo 
-                      no momento da submissão da petição. Certifique-se de ter tokens suficientes antes de iniciar.
+                      A criação de uma nova petição custa {requiredTokens} tokens. Estes tokens serão deduzidos do saldo 
+                      do proprietário da sua equipe ({activeTeam?.name || 'Equipe Ativa'})
+                      no momento da submissão da petição. Certifique-se de que o proprietário da equipe tenha tokens suficientes.
                     </p>
                   </div>
                 </div>
@@ -249,10 +332,10 @@ const PetitionFormPage = () => {
               Custo da petição: {requiredTokens} tokens
             </AlertTitle>
             <AlertDescription className="text-amber-700/80 dark:text-amber-400/80">
-              A criação desta petição custará {requiredTokens} tokens do seu saldo.
-              {tokenBalance !== null && (
+              A criação desta petição custará {requiredTokens} tokens do saldo da equipe.
+              {teamTokenBalance !== null && ( 
                 <span className="ml-1">
-                  Seu saldo atual é de <strong>{tokenBalance} tokens</strong>.
+                  Saldo atual da equipe (proprietário): <strong>{teamTokenBalance} tokens</strong>.
                 </span>
               )}
             </AlertDescription>

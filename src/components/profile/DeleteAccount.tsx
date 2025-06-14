@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from '@/integrations/supabase/client';
-import { toast } from "sonner";
+import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/contexts/AuthContext';
 
 const DeleteAccount = () => {
@@ -23,6 +23,7 @@ const DeleteAccount = () => {
   const [open, setOpen] = useState(false);
   const [confirmText, setConfirmText] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
+  const { toast } = useToast();
   
   const handleDeleteAccount = async () => {
     if (!user) return;

@@ -1,10 +1,11 @@
+
 import React, { useEffect, useState } from 'react';
 import { Petition, PetitionReview, Profile } from '@/types';
 import { formatDate } from '@/utils/formatDate';
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { petitionService } from '@/services/petitionService';
+import { petitionService } from '@/services';
 import { PetitionStatus } from '@/types/enums';
 import { cn } from '@/lib/utils';
 import {

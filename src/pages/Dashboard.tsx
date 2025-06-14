@@ -11,17 +11,14 @@ import {
   CheckCircle,
   Clock,
   AlertCircle,
+  RefreshCw,
 } from "lucide-react";
-import { petitionService } from '@/services/petition';
-import { Petition, PetitionStatus } from '@/types';
+import { usePetitions } from '@/hooks/usePetitions';
+import { PetitionStatus } from '@/types';
 import StatusBadge from '@/components/StatusBadge';
-import { supabase } from '@/integrations/supabase/client';
 
 const Dashboard: React.FC = () => {
-  const [recentPetitions, setRecentPetitions] = useState<Petition[]>([]);
-  const [totalPetitions, setTotalPetitions] = useState(0);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { petitions, isLoading, error, refreshPetitions } = usePetitions();
   const [stats, setStats] = useState({
     pending: 0,
     processing: 0,
@@ -32,88 +29,24 @@ const Dashboard: React.FC = () => {
   });
 
   useEffect(() => {
-    const fetchPetitions = async () => {
-      setIsLoading(true);
-      try {
-        // Obter o ID do usuário atual
-        const { data: userData } = await supabase.auth.getSession();
-        const userId = userData?.session?.user?.id;
-        
-        if (!userId) {
-          throw new Error("Usuário não autenticado");
-        }
-        
-        // Verificar se o usuário é um administrador
-        const { data: userProfile } = await supabase
-          .from("profiles")
-          .select("is_admin")
-          .eq("id", userId)
-          .single();
-        
-        let petitionData: Petition[] = [];
-        
-        if (userProfile?.is_admin) {
-          // Se for admin, busca todas as petições
-          const response = await petitionService.getAllPetitions();
-          petitionData = response;
-        } else {
-          // Se não for admin, busca apenas as petições do usuário e suas equipes
-          
-          // 1. Buscar IDs das equipes do usuário
-          const { data: teamMemberships } = await supabase
-            .from("team_members")
-            .select("team_id")
-            .eq("user_id", userId);
-            
-          const teamIds = teamMemberships?.map(tm => tm.team_id) || [];
-          
-          // 2. Buscar petições
-          const result = await petitionService.getPetitions({
-            page: 1,
-            limit: 5,
-            sortDirection: 'desc'
-          });
-          
-          // 3. Filtrar petições no frontend para garantir que o usuário só veja suas próprias petições
-          // ou petições de suas equipes
-          const allPetitions = result.data || [];
-          petitionData = allPetitions.filter(petition => 
-            petition.user_id === userId || 
-            (petition.team_id && teamIds.includes(petition.team_id))
-          );
-          
-          console.log(`Dashboard - Filtrando petições para usuário ${userId}: Encontradas ${petitionData.length} petições de ${allPetitions.length} total`);
-        }
-        
-        setRecentPetitions(petitionData);
-        setTotalPetitions(petitionData.length);
-        
-        // Calcular estatísticas com base nas petições filtradas
-        if (petitionData.length > 0) {
-          setStats({
-            pending: petitionData.filter(p => p.status === PetitionStatus.PENDING).length,
-            processing: petitionData.filter(p => p.status === PetitionStatus.PROCESSING).length,
-            review: petitionData.filter(p => 
-              p.status === PetitionStatus.REVIEW || 
-              p.status === PetitionStatus.IN_REVIEW
-            ).length,
-            approved: petitionData.filter(p => p.status === PetitionStatus.APPROVED).length,
-            rejected: petitionData.filter(p => p.status === PetitionStatus.REJECTED).length,
-            complete: petitionData.filter(p => p.status === PetitionStatus.COMPLETE).length
-          });
-        }
-        
-        setError(null);
-      } catch (err) {
-        console.error('Error fetching petitions:', err);
-        setError('Falha ao carregar suas petições');
-      } finally {
-        setIsLoading(false);
-      }
-    };
+    if (petitions.length > 0) {
+      setStats({
+        pending: petitions.filter(p => p.status === PetitionStatus.PENDING).length,
+        processing: petitions.filter(p => p.status === PetitionStatus.PROCESSING).length,
+        review: petitions.filter(p => 
+          p.status === PetitionStatus.REVIEW || 
+          p.status === PetitionStatus.IN_REVIEW
+        ).length,
+        approved: petitions.filter(p => p.status === PetitionStatus.APPROVED).length,
+        rejected: petitions.filter(p => p.status === PetitionStatus.REJECTED).length,
+        complete: petitions.filter(p => p.status === PetitionStatus.COMPLETE).length
+      });
+    }
+  }, [petitions]);
 
-    fetchPetitions();
-  }, []);
+  // Mostrar apenas as 4 petições mais recentes no dashboard
+  const recentPetitions = petitions.slice(0, 4);
+  const totalPetitions = petitions.length;
 
   return (
     <div className="container mx-auto py-6 px-4 md:px-6">
@@ -122,12 +55,23 @@ const Dashboard: React.FC = () => {
           <h1 className="text-3xl font-bold text-primary">Seu Painel</h1>
           <p className="text-muted-foreground mt-1">Bem-vindo(a) ao Petição Ágil, gerencie suas petições jurídicas com eficiência.</p>
         </div>
-        <Button asChild className="mt-4 md:mt-0 bg-primary hover:bg-primary/90">
-          <Link to="/petitions/new" className="flex items-center gap-2">
-            <FileText className="h-4 w-4" />
-            Nova Petição
-          </Link>
-        </Button>
+        <div className="flex gap-2 mt-4 md:mt-0">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={refreshPetitions}
+            disabled={isLoading}
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+            Atualizar
+          </Button>
+          <Button asChild className="bg-primary hover:bg-primary/90">
+            <Link to="/petitions/new" className="flex items-center gap-2">
+              <FileText className="h-4 w-4" />
+              Nova Petição
+            </Link>
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-8">
@@ -267,7 +211,13 @@ const Dashboard: React.FC = () => {
       ) : error ? (
         <Card>
           <CardContent className="flex items-center justify-center p-6">
-            <p className="text-red-500">{error}</p>
+            <div className="text-center">
+              <p className="text-red-500 mb-4">{error.message}</p>
+              <Button onClick={refreshPetitions} variant="outline">
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Tentar Novamente
+              </Button>
+            </div>
           </CardContent>
         </Card>
       ) : recentPetitions.length > 0 ? (

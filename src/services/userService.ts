@@ -1,31 +1,78 @@
 
-import { supabase } from "@/integrations/supabase/client";
-import { Profile } from "@/types";
+import { Profile } from '@/types';
+import { supabase } from '@/integrations/supabase/client';
 
+/**
+ * Serviço de gerenciamento de usuários
+ */
 export const userService = {
-  getAllUsers: async (): Promise<{ data: Profile[]; count: number }> => {
+  /**
+   * Busca o perfil do usuário pelo ID
+   * @param userId - ID do usuário
+   * @returns Perfil do usuário ou null se não encontrado
+   */
+  getUserProfile: async (userId: string): Promise<Profile | null> => {
     try {
-      const { data, error, count } = await supabase
-        .from('profiles')
-        .select('*', { count: 'exact' })
-        .order('created_at', { ascending: false });
-        
-      if (error) {
-        console.error("Error fetching all users:", error);
-        return { data: [], count: 0 };
-      }
+      console.log(`getUserProfile: Fetching profile for user ${userId}`);
       
-      return { 
-        data: data as Profile[],
-        count: count || 0 
-      };
-    } catch (error) {
-      console.error("Error in getAllUsers:", error);
-      return { data: [], count: 0 };
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (error) {
+        console.error(`getUserProfile: Error fetching profile for ${userId}:`, error.message);
+        return null;
+      }
+
+      if (!data) {
+        console.warn(`getUserProfile: No profile found for ${userId}`);
+        return null;
+      }
+
+      console.log(`getUserProfile: Profile found for ${userId}`);
+      return data as Profile;
+    } catch (error: any) {
+      console.error(`getUserProfile: Exception for ${userId}:`, error.message);
+      return null;
     }
   },
 
-  getAllNonAdminUsers: async (): Promise<{ data: Profile[]; count: number }> => {
+  /**
+   * Verifica se um usuário é administrador
+   * @param userId - ID do usuário
+   * @returns true se o usuário é administrador, false caso contrário
+   */
+  isUserAdmin: async (userId: string): Promise<boolean> => {
+    try {
+      console.log(`isUserAdmin: Checking admin status for user ${userId}`);
+      
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('is_admin')
+        .eq('id', userId)
+        .single();
+
+      if (error) {
+        console.error(`isUserAdmin: Error checking admin status for ${userId}:`, error.message);
+        return false;
+      }
+
+      const isAdmin = !!data?.is_admin;
+      console.log(`isUserAdmin: User ${userId} is admin: ${isAdmin}`);
+      return isAdmin;
+    } catch (error: any) {
+      console.error(`isUserAdmin: Exception for ${userId}:`, error.message);
+      return false;
+    }
+  },
+
+  /**
+   * Busca todos os usuários não administradores
+   * @returns Lista de usuários e contagem
+   */
+  getAllNonAdminUsers: async (): Promise<{ data: Profile[], count: number }> => {
     try {
       const { data, error, count } = await supabase
         .from('profiles')
@@ -38,75 +85,14 @@ export const userService = {
         return { data: [], count: 0 };
       }
       
-      return { 
-        data: data as Profile[],
-        count: count || 0 
-      };
+      return { data: data as Profile[], count: count || 0 };
     } catch (error) {
       console.error("Error in getAllNonAdminUsers:", error);
       return { data: [], count: 0 };
     }
-  },
-
-  getUserById: async (userId: string): Promise<Profile | null> => {
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
-        
-      if (error) {
-        console.error("Error fetching user:", error);
-        return null;
-      }
-      
-      return data as Profile;
-    } catch (error) {
-      console.error("Error in getUserById:", error);
-      return null;
-    }
-  },
-  
-  searchUsers: async (searchTerm: string): Promise<{ data: Profile[]; count: number }> => {
-    try {
-      const { data, error, count } = await supabase
-        .from('profiles')
-        .select('*', { count: 'exact' })
-        .or(`name.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%,document.ilike.%${searchTerm}%`)
-        .order('created_at', { ascending: false });
-        
-      if (error) {
-        console.error("Error searching users:", error);
-        return { data: [], count: 0 };
-      }
-      
-      return { 
-        data: data as Profile[],
-        count: count || 0 
-      };
-    } catch (error) {
-      console.error("Error in searchUsers:", error);
-      return { data: [], count: 0 };
-    }
-  },
-  
-  getUserPetitions: async (userId: string): Promise<number> => {
-    try {
-      const { count, error } = await supabase
-        .from('petitions')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', userId);
-        
-      if (error) {
-        console.error("Error counting user petitions:", error);
-        return 0;
-      }
-      
-      return count || 0;
-    } catch (error) {
-      console.error("Error in getUserPetitions:", error);
-      return 0;
-    }
   }
 };
+
+// Estas funções individuais são mantidas para compatibilidade com código existente
+export const getUserProfile = userService.getUserProfile;
+export const isUserAdmin = userService.isUserAdmin;

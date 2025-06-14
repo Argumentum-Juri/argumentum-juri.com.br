@@ -9,6 +9,48 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      annual_token_renewal_tracker: {
+        Row: {
+          created_at: string | null
+          granted_months_this_cycle: number
+          id: string
+          next_token_grant_date: string
+          status: string
+          stripe_annual_price_id: string
+          stripe_customer_id: string | null
+          stripe_subscription_id: string
+          tokens_per_month: number
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          granted_months_this_cycle?: number
+          id?: string
+          next_token_grant_date: string
+          status?: string
+          stripe_annual_price_id: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id: string
+          tokens_per_month: number
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          granted_months_this_cycle?: number
+          id?: string
+          next_token_grant_date?: string
+          status?: string
+          stripe_annual_price_id?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string
+          tokens_per_month?: number
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       petition_attachments: {
         Row: {
           created_at: string
@@ -194,6 +236,7 @@ export type Database = {
       }
       petition_settings: {
         Row: {
+          accent_color: string | null
           created_at: string
           font_family: string
           font_size: string
@@ -213,12 +256,13 @@ export type Database = {
           petition_template_r2_key: string | null
           petition_template_storage_provider: string | null
           petition_template_url: string | null
-          petition_token_cost: number
+          primary_color: string | null
           updated_at: string
           use_letterhead: boolean
           user_id: string
         }
         Insert: {
+          accent_color?: string | null
           created_at?: string
           font_family?: string
           font_size?: string
@@ -238,12 +282,13 @@ export type Database = {
           petition_template_r2_key?: string | null
           petition_template_storage_provider?: string | null
           petition_template_url?: string | null
-          petition_token_cost?: number
+          primary_color?: string | null
           updated_at?: string
           use_letterhead?: boolean
           user_id: string
         }
         Update: {
+          accent_color?: string | null
           created_at?: string
           font_family?: string
           font_size?: string
@@ -263,7 +308,7 @@ export type Database = {
           petition_template_r2_key?: string | null
           petition_template_storage_provider?: string | null
           petition_template_url?: string | null
-          petition_token_cost?: number
+          primary_color?: string | null
           updated_at?: string
           use_letterhead?: boolean
           user_id?: string
@@ -280,45 +325,66 @@ export type Database = {
       }
       petitions: {
         Row: {
+          category: string | null
+          content: string | null
           created_at: string
+          current_signatures: string | null
           description: string
           form_answers: Json | null
+          form_schema: string | null
+          form_type: string | null
           has_process: boolean | null
           id: string
           legal_area: string | null
           petition_type: string | null
           process_number: string | null
+          rejection_count: number | null
           status: string
+          target: string | null
           team_id: string | null
           title: string
           updated_at: string
           user_id: string
         }
         Insert: {
+          category?: string | null
+          content?: string | null
           created_at?: string
+          current_signatures?: string | null
           description: string
           form_answers?: Json | null
+          form_schema?: string | null
+          form_type?: string | null
           has_process?: boolean | null
           id?: string
           legal_area?: string | null
           petition_type?: string | null
           process_number?: string | null
+          rejection_count?: number | null
           status?: string
+          target?: string | null
           team_id?: string | null
           title: string
           updated_at?: string
           user_id: string
         }
         Update: {
+          category?: string | null
+          content?: string | null
           created_at?: string
+          current_signatures?: string | null
           description?: string
           form_answers?: Json | null
+          form_schema?: string | null
+          form_type?: string | null
           has_process?: boolean | null
           id?: string
           legal_area?: string | null
           petition_type?: string | null
           process_number?: string | null
+          rejection_count?: number | null
           status?: string
+          target?: string | null
           team_id?: string | null
           title?: string
           updated_at?: string
@@ -422,45 +488,6 @@ export type Database = {
           terms_accepted_at?: string | null
           updated_at?: string
           zip_code?: string | null
-        }
-        Relationships: []
-      }
-      subscription_renewals: {
-        Row: {
-          created_at: string
-          id: string
-          last_renewal_date: string | null
-          next_renewal_date: string
-          price_id: string
-          status: string
-          subscription_id: string
-          tokens_per_renewal: number
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          last_renewal_date?: string | null
-          next_renewal_date: string
-          price_id: string
-          status?: string
-          subscription_id: string
-          tokens_per_renewal: number
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          last_renewal_date?: string | null
-          next_renewal_date?: string
-          price_id?: string
-          status?: string
-          subscription_id?: string
-          tokens_per_renewal?: number
-          updated_at?: string
-          user_id?: string
         }
         Relationships: []
       }
@@ -656,7 +683,14 @@ export type Database = {
       }
       get_user_teams: {
         Args: Record<PropertyKey, never> | { input_user_id: string }
-        Returns: string[]
+        Returns: {
+          team_id: number
+          team_name: string
+        }[]
+      }
+      grant_monthly_annual_tokens: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
       }
       is_admin: {
         Args: { user_id: string }
@@ -696,6 +730,10 @@ export type Database = {
       }
       toggle_admin_status: {
         Args: { target_user_id: string; set_admin: boolean }
+        Returns: boolean
+      }
+      user_is_team_member: {
+        Args: { team_id_param: string }
         Returns: boolean
       }
     }

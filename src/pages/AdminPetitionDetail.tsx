@@ -1,10 +1,9 @@
-
 import React, { useState, useEffect } from 'react';
 import { useParams, Navigate, useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Breadcrumb, BreadcrumbList, BreadcrumbItem, BreadcrumbLink } from "@/components/ui/breadcrumb";
 import { ArrowLeft } from "lucide-react";
-import { Tabs, TabsContent } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePetitionDetail } from '@/hooks/use-petition-detail';
 import PetitionSkeleton from '@/components/petition-detail/PetitionSkeleton';
 import NotFoundError from '@/components/petition-detail/NotFoundError';
@@ -100,7 +99,7 @@ const AdminPetitionDetail: React.FC = () => {
 
   const handleSendToReview = async () => {
     if (!documents || documents.length === 0) {
-      toast.error("É necessário importar pelo menos um documento antes de enviar para revisão.");
+      toast.error("É necess��rio importar pelo menos um documento antes de enviar para revisão.");
       return;
     }
 
@@ -151,44 +150,13 @@ const AdminPetitionDetail: React.FC = () => {
 
   // Definir as opções de abas
   const tabOptions = [
-    { value: "documents", label: "Documentos", icon: <FileText className="mr-2 h-4 w-4" /> },
-    { value: "answers", label: "Detalhes", icon: <List className="mr-2 h-4 w-4" /> },
-    { value: "attachments", label: "Anexos", icon: <Paperclip className="mr-2 h-4 w-4" /> },
-    { value: "messages", label: "Mensagens", icon: <MessageSquare className="mr-2 h-4 w-4" /> },
-    { value: "history", label: "Histórico", icon: <History className="mr-2 h-4 w-4" /> },
-    { value: "formatting", label: "Formatação", icon: <Settings className="mr-2 h-4 w-4" /> }
+    { value: "documents", label: "Documentos", icon: <FileText className="h-4 w-4 mr-2" /> },
+    { value: "answers", label: "Detalhes", icon: <List className="h-4 w-4 mr-2" /> },
+    { value: "attachments", label: "Anexos", icon: <Paperclip className="h-4 w-4 mr-2" /> },
+    { value: "messages", label: "Mensagens", icon: <MessageSquare className="h-4 w-4 mr-2" /> },
+    { value: "history", label: "Histórico", icon: <History className="h-4 w-4 mr-2" /> },
+    { value: "formatting", label: "Formatação", icon: <Settings className="h-4 w-4 mr-2" /> }
   ];
-
-  // Renderizar o seletor de abas
-  const renderTabSelector = () => {
-    if (isMobile) {
-      return (
-        <Select value={activeTab} onValueChange={setActiveTab}>
-          <SelectTrigger className="w-full mb-4">
-            <SelectValue>
-              <div className="flex items-center">
-                {tabOptions.find(tab => tab.value === activeTab)?.icon}
-                {tabOptions.find(tab => tab.value === activeTab)?.label}
-              </div>
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {tabOptions.map(tab => (
-              <SelectItem key={tab.value} value={tab.value}>
-                <div className="flex items-center">
-                  {tab.icon}
-                  {tab.label}
-                </div>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      );
-    }
-
-    // A versão desktop usando TabsList já está no return principal
-    return null;
-  };
 
   return (
     <div className="container max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8 space-y-6">
@@ -257,12 +225,63 @@ const AdminPetitionDetail: React.FC = () => {
             </div>
           </div>
           
-          {renderActionButtons()}
+          {shouldShowActionButtons() && (
+            <div className="flex flex-col sm:flex-row gap-2 mt-4 sm:mt-0 sm:w-auto">
+              {(petition.status === PetitionStatus.PENDING ||
+                petition.status === PetitionStatus.PROCESSING ||
+                petition.status === PetitionStatus.REJECTED) && (
+                <Button
+                  onClick={handleSendToReview}
+                  disabled={sendingToReview}
+                  className="flex items-center gap-1 w-full sm:w-auto"
+                >
+                  <SendHorizontal className="h-4 w-4" />
+                  {sendingToReview ? 'Enviando...' : 'Enviar para Revisão'}
+                </Button>
+              )}
+            </div>
+          )}
         </div>
       </Card>
 
       <Tabs defaultValue="documents" value={activeTab} onValueChange={setActiveTab} className="w-full">
-        {renderTabSelector()}
+        {/* Mobile selector */}
+        {isMobile && (
+          <div className="mb-4">
+            <Select value={activeTab} onValueChange={setActiveTab}>
+              <SelectTrigger className="w-full mb-4">
+                <SelectValue>
+                  <div className="flex items-center">
+                    {tabOptions.find(tab => tab.value === activeTab)?.icon}
+                    {tabOptions.find(tab => tab.value === activeTab)?.label}
+                  </div>
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {tabOptions.map(tab => (
+                  <SelectItem key={tab.value} value={tab.value}>
+                    <div className="flex items-center">
+                      {tab.icon}
+                      {tab.label}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        
+        {/* Desktop tabs - Modified to use centered design similar to user version */}
+        <div className="flex justify-center mb-4">
+          <TabsList className={`grid ${tabOptions.length === 6 ? 'grid-cols-6' : 'grid-cols-5'} w-full max-w-3xl`}>
+            {tabOptions.map(tab => (
+              <TabsTrigger key={tab.value} value={tab.value} className="flex items-center gap-2">
+                {tab.icon.type && <tab.icon.type className="h-4 w-4" />}
+                <span className="hidden sm:inline">{tab.label}</span>
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </div>
         
         <TabsContent value="documents">
           <DocumentsView 
@@ -270,6 +289,7 @@ const AdminPetitionDetail: React.FC = () => {
             documents={documents}
             isAdmin={true}
             onDocumentChange={refresh}
+            disableGenerateButton={true}
           />
         </TabsContent>
         

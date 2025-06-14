@@ -1,4 +1,3 @@
-
 import { Question } from '@/types/petition-form';
 import { 
   brazilianStates,
@@ -13,9 +12,7 @@ import {
   selecao_prejudiciais
 } from '@/components/petition-form/QuestionOptions';
 
-
-
-  // --- Questões ---
+// --- Questões ---
 export const allPossibleQuestions: Question[] = [
   // --- Dados da Solicitação ---
   {
@@ -54,11 +51,12 @@ export const allPossibleQuestions: Question[] = [
     validation: (value, ans) => ans['petition_type'] === 'inicial' && !value ? 'O estado (UF) é obrigatório' : null
   },
   { // Inicial
-    id: 'cidade_distribuicao', type: 'combobox', field: 'cidade_distribuicao',
-    options: stateCities,
-    dynamicOptions: true, // Indica que as opções serão carregadas dinamicamente
-    allowCustomValues: false, // Não permite valores personalizados para cidades
-    question: 'Qual a cidade nesse estado?', required: true,
+    id: 'cidade_distribuicao', 
+    type: 'dynamic-select', 
+    field: 'cidade_distribuicao',
+    dependsOn: 'uf_distribuicao',
+    question: 'Qual a cidade nesse estado?', 
+    required: true,
     condition: (ans) => ans['petition_type'] === 'inicial',
     validation: (value, ans) => ans['petition_type'] === 'inicial' && !value ? 'A cidade é obrigatória' : null
   },
@@ -256,3 +254,27 @@ export const allPossibleQuestions: Question[] = [
     id: 'attachments', type: 'file', field: 'attachments', question: 'Gostaria de adicionar algum outro anexo à sua petição?', required: false
   }
 ];
+
+/**
+ * Returns a filtered list of questions based on the form type
+ * @param formType Type of petition form to get questions for
+ * @returns Array of questions specific to the given form type
+ */
+export const getFormQuestions = (formType: string): Question[] => {
+  if (!formType) return [];
+  
+  // If we're looking for all questions, return the complete array
+  if (formType === 'all') {
+    return allPossibleQuestions;
+  }
+  
+  // Filter questions that are applicable to this form type
+  return allPossibleQuestions.filter(question => {
+    // If no condition is provided, include the question
+    if (!question.condition) return true;
+    
+    // Check if the question applies to this form type
+    const mockAnswers = { petition_type: formType };
+    return question.condition(mockAnswers);
+  });
+};

@@ -5,8 +5,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import { PetitionSettings as PetitionSettingsType } from "@/types";
-import { petitionSettings } from "@/services/petition/petitionSettings";
+import { SettingsProvider } from "@/contexts/SettingsContext";
+import { petitionSettingsService } from '@/services/petition/petitionSettingsService';
+import type { PetitionSettings as PetitionSettingsType } from '@/types/petitionSettings';
 
 import LayoutSettings from './petition-settings/LayoutSettings';
 import FontSettings from './petition-settings/FontSettings';
@@ -34,7 +35,7 @@ const PetitionSettings: React.FC = () => {
       if (!user?.id) return;
       
       try {
-        const data = await petitionSettings.getSettingsForUser(user.id);
+        const data = await petitionSettingsService.getSettingsForUser(user.id);
         if (data) {
           // Certifique-se de que o user_id está sempre atualizado 
           // mesmo que venha vazio do banco
@@ -78,7 +79,7 @@ const PetitionSettings: React.FC = () => {
     
     setIsSaving(true);
     try {
-      await petitionSettings.saveSettings(settingsToSave);
+      await petitionSettingsService.saveSettings(settingsToSave);
       
       toast({
         title: "Configurações salvas",
@@ -97,56 +98,55 @@ const PetitionSettings: React.FC = () => {
   };
 
   return (
-    <div className="max-w-4xl mx-auto">
-      <Card>
-        <CardHeader>
-          <CardTitle>Configurações de Petição</CardTitle>
-          <CardDescription>
-            Personalize o visual e o formato dos seus documentos jurídicos.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Tabs defaultValue="layout">
-            <TabsList className="grid grid-cols-4 mb-8">
-              <TabsTrigger value="layout">Layout</TabsTrigger>
-              <TabsTrigger value="fonts">Fontes</TabsTrigger>
-              <TabsTrigger value="letterhead">Timbrado</TabsTrigger>
-              <TabsTrigger value="templates">Modelos</TabsTrigger>
-            </TabsList>
-            <TabsContent value="layout">
-              <LayoutSettings 
-                settings={settings} 
-                onChange={handleSettingsChange} 
-              />
-            </TabsContent>
-            <TabsContent value="fonts">
-              <FontSettings 
-                settings={settings} 
-                onChange={handleSettingsChange} 
-              />
-            </TabsContent>
-            <TabsContent value="letterhead">
-              <LogoSettings 
-                settings={settings} 
-                onChange={handleSettingsChange} 
-              />
-            </TabsContent>
-            <TabsContent value="templates">
-              <TemplateSettings 
-                settings={settings} 
-                onChange={handleSettingsChange} 
-              />
-            </TabsContent>
-          </Tabs>
+    <SettingsProvider>
+      <div className="max-w-4xl mx-auto">
+        <Card>
+          <CardHeader>
+            <CardTitle>Configurações de Petição</CardTitle>
+            <CardDescription>
+              Personalize o visual e o formato dos seus documentos jurídicos.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Tabs defaultValue="layout">
+              <TabsList className="grid grid-cols-4 mb-8">
+                <TabsTrigger value="layout">Layout</TabsTrigger>
+                <TabsTrigger value="fonts">Fontes</TabsTrigger>
+                <TabsTrigger value="letterhead">Timbrado</TabsTrigger>
+                <TabsTrigger value="templates">Modelos</TabsTrigger>
+              </TabsList>
+              <TabsContent value="layout">
+                <LayoutSettings 
+                  settings={settings} 
+                  onChange={handleSettingsChange} 
+                />
+              </TabsContent>
+              <TabsContent value="fonts">
+                <FontSettings 
+                  settings={settings} 
+                  onChange={handleSettingsChange} 
+                />
+              </TabsContent>
+              <TabsContent value="letterhead">
+                <LogoSettings />
+              </TabsContent>
+              <TabsContent value="templates">
+                <TemplateSettings 
+                  settings={settings} 
+                  onChange={handleSettingsChange} 
+                />
+              </TabsContent>
+            </Tabs>
 
-          <div className="mt-8 flex justify-end">
-            <Button onClick={handleSubmit} disabled={isSaving}>
-              {isSaving ? 'Salvando...' : 'Salvar Configurações'}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+            <div className="mt-8 flex justify-end">
+              <Button onClick={handleSubmit} disabled={isSaving}>
+                {isSaving ? 'Salvando...' : 'Salvar Configurações'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </SettingsProvider>
   );
 };
 

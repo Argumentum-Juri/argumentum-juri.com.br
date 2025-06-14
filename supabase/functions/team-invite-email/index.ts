@@ -1,147 +1,171 @@
 
-import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import { SMTPClient } from "https://deno.land/x/denomailer@1.0.0/mod.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
+// Create the team-invite-email edge function
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { Resend } from "npm:resend@1.0.0";
 
+// CORS headers for browser requests
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Helper logging function for debugging
-const logStep = (step: string, details?: any) => {
-  const detailsStr = details ? ` - ${JSON.stringify(details)}` : '';
-  console.log(`[TEAM-INVITE-EMAIL] ${step}${detailsStr}`);
-};
+interface TeamInviteEmailPayload {
+  email: string;
+  teamId: string;
+  role: string;
+  inviterId?: string;
+}
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") {
+  // Handle CORS preflight requests
+  if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    logStep("Function started");
-    
-    const requestData = await req.json();
-    const { inviteId, email, teamName, inviterName, role } = requestData;
-    
-    if (!inviteId || !email || !teamName) {
-      throw new Error("Dados do convite incompletos");
-    }
-    
-    logStep("Invite data validated", { inviteId, email, teamName, inviterName, role });
-    
-    // Configuração SMTP
-    const smtpUsername = Deno.env.get("SMTP_USERNAME");
-    const smtpPassword = Deno.env.get("SMTP_PASSWORD");
-    const smtpHost = Deno.env.get("SMTP_HOST");
-    const smtpPort = parseInt(Deno.env.get("SMTP_PORT") || "587");
-    
-    if (!smtpUsername || !smtpPassword || !smtpHost) {
-      throw new Error("Configuração SMTP incompleta");
-    }
-    
-    logStep("SMTP configuration validated");
-    
-    // Montar URL de convite
-    const baseUrl = Deno.env.get("FRONTEND_URL") || "http://localhost:5173";
-    const inviteUrl = `${baseUrl}/auth?invite=${inviteId}`;
-    
-    logStep("Invite URL created", { inviteUrl });
-    
-    // Configurar cliente SMTP
-    const client = new SMTPClient({
-      connection: {
-        hostname: smtpHost,
-        port: smtpPort,
-        tls: true,
-        auth: {
-          username: smtpUsername,
-          password: smtpPassword,
-        },
-      },
-    });
-    
-    // Criar HTML do email
-    const emailHtml = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; }
-        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-        .header { background-color: #0F3E73; color: white; padding: 15px; text-align: center; }
-        .content { padding: 20px; background-color: #f9f9f9; }
-        .button { display: inline-block; padding: 10px 20px; background-color: #BB9C45; color: white; 
-          text-decoration: none; border-radius: 5px; font-weight: bold; }
-        .footer { text-align: center; padding: 15px; font-size: 12px; color: #666; }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <div class="header">
-          <h2>Convite para Equipe no Argumentum</h2>
-        </div>
-        <div class="content">
-          <p>Olá,</p>
-          <p>Você foi convidado por <strong>${inviterName || 'um membro'}</strong> para juntar-se à equipe <strong>${teamName}</strong> como <strong>${role || 'membro'}</strong> na plataforma Argumentum.</p>
-          <p>Argumentum é uma plataforma que permite a criação e gestão colaborativa de petições jurídicas.</p>
-          <p style="text-align: center; margin: 25px 0;">
-            <a href="${inviteUrl}" class="button">Aceitar Convite</a>
-          </p>
-          <p>Se você ainda não possui uma conta, será direcionado para criar uma após aceitar o convite.</p>
-          <p>Se você não esperava este convite, pode ignorar este email.</p>
-        </div>
-        <div class="footer">
-          &copy; ${new Date().getFullYear()} Argumentum - Todos os direitos reservados.
-        </div>
-      </div>
-    </body>
-    </html>
-    `;
-    
-    // Enviar email
-    await client.send({
-      from: smtpUsername,
-      to: email,
-      subject: `Convite para Equipe: ${teamName}`,
-      content: "Você foi convidado para uma equipe no Argumentum",
-      html: emailHtml,
-    });
-    
-    logStep("Email sent successfully");
-    
-    await client.close();
-    
-    // Atualizar o banco de dados para registrar que o email foi enviado
+    // Create a Supabase client with the Auth context of the function
     const supabaseClient = createClient(
-      Deno.env.get("SUPABASE_URL") || "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || ""
+      // Supabase API URL - env var exported by default.
+      Deno.env.get('SUPABASE_URL') ?? '',
+      // Supabase API ANON KEY - env var exported by default.
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      // Create client with Auth context of the user that called the function.
+      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
     );
     
-    const { error: updateError } = await supabaseClient
-      .from("team_invites")
-      .update({ email_sent: true, email_sent_at: new Date().toISOString() })
-      .eq("id", inviteId);
+    // Parse the request body
+    const { email, teamId, role, inviterId } = await req.json() as TeamInviteEmailPayload;
     
-    if (updateError) {
-      console.error("Error updating invite record:", updateError);
+    if (!email || !teamId || !role) {
+      return new Response(
+        JSON.stringify({ error: 'Missing required fields' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
     
-    logStep("Database updated");
+    console.log(`Processing invite email for: ${email}, team: ${teamId}, role: ${role}`);
     
-    return new Response(
-      JSON.stringify({ success: true, message: "Email de convite enviado com sucesso" }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    // Get team information
+    const { data: teamData, error: teamError } = await supabaseClient
+      .from('teams')
+      .select('*')
+      .eq('id', teamId)
+      .single();
+      
+    if (teamError) {
+      console.error('Error fetching team:', teamError);
+      throw teamError;
+    }
     
+    // Get inviter information if provided
+    let inviterName = 'A team administrator';
+    
+    if (inviterId) {
+      const { data: inviterData, error: inviterError } = await supabaseClient
+        .from('profiles')
+        .select('name, email')
+        .eq('id', inviterId)
+        .single();
+        
+      if (!inviterError && inviterData) {
+        inviterName = inviterData.name || inviterData.email || 'A team administrator';
+      }
+    }
+
+    // Generate an invite token
+    const { data: inviteData, error: inviteError } = await supabaseClient
+      .from('team_invites')
+      .select('id')
+      .eq('email', email)
+      .eq('team_id', teamId)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (inviteError && inviteError.code !== 'PGRST116') {
+      console.error('Error fetching invite:', inviteError);
+      throw inviteError;
+    }
+
+    const inviteId = inviteData?.id;
+    if (!inviteId) {
+      throw new Error('No valid invitation found');
+    }
+    
+    // Create the signup link with invite token
+    // Use SITE_URL from environment variables for production support
+    const siteUrl = Deno.env.get('SITE_URL') || 'https://app.escribaai.com';
+    const signupUrl = new URL(`${siteUrl}/auth`);
+    signupUrl.searchParams.append('invite', inviteId);
+    signupUrl.searchParams.append('email', email);
+    
+    // Initialize Resend if API key is available
+    const resendApiKey = Deno.env.get('RESEND_API_KEY');
+    
+    if (resendApiKey) {
+      const resend = new Resend(resendApiKey);
+      
+      // Send the actual email using Resend
+      const { data: emailData, error: emailError } = await resend.emails.send({
+        from: 'EscribaAI <noreply@escribaai.com>',
+        to: [email],
+        subject: 'Convite para participar de uma equipe no EscribaAI',
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h1 style="color: #333;">Convite para equipe EscribaAI</h1>
+            <p>${inviterName} convidou você para participar de uma equipe no EscribaAI com a função de <strong>${role}</strong>.</p>
+            <p>Clique no botão abaixo para se cadastrar e aceitar o convite:</p>
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${signupUrl.toString()}" style="background-color: #4F46E5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: bold;">Aceitar Convite</a>
+            </div>
+            <p>Ou copie e cole este link no seu navegador:</p>
+            <p style="word-break: break-all; color: #4F46E5;">${signupUrl.toString()}</p>
+            <p>Este convite expirará em 7 dias.</p>
+            <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
+            <p style="color: #666; font-size: 12px;">EscribaAI &copy; 2025</p>
+          </div>
+        `,
+      });
+      
+      if (emailError) {
+        console.error('Error sending email:', emailError);
+        throw emailError;
+      }
+      
+      console.log('Email sent successfully:', emailData);
+      
+      return new Response(
+        JSON.stringify({ success: true, message: 'Invitation email sent successfully' }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    } else {
+      // Log what would be sent if Resend API key is not available
+      console.log(`
+        Would send email to: ${email}
+        Subject: Convite para participar de uma equipe no EscribaAI
+        
+        Body:
+        ${inviterName} convidou você para participar de uma equipe no EscribaAI como ${role}.
+        
+        Clique no link abaixo para criar sua conta e aceitar o convite:
+        ${signupUrl.toString()}
+        
+        Este convite expirará em 7 dias.
+      `);
+      
+      return new Response(
+        JSON.stringify({ success: true, message: 'Invitation email processed (development mode)' }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
   } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
-    console.error("Error:", errorMsg);
+    console.error('Error processing team invite email:', error);
     
     return new Response(
-      JSON.stringify({ success: false, error: errorMsg }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
+      JSON.stringify({ error: error.message }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });

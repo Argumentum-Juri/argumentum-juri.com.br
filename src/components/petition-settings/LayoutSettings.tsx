@@ -1,7 +1,6 @@
 
 import React from 'react';
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { PetitionSettings } from '@/types';
 
@@ -11,13 +10,6 @@ interface LayoutSettingsProps {
 }
 
 const LayoutSettings: React.FC<LayoutSettingsProps> = ({ settings, onChange }) => {
-  const handleLetterheadChange = (checked: boolean) => {
-    onChange({
-      ...settings,
-      use_letterhead: checked
-    });
-  };
-
   const handleMarginChange = (value: 'small' | 'normal' | 'large') => {
     onChange({
       ...settings,
@@ -27,20 +19,6 @@ const LayoutSettings: React.FC<LayoutSettingsProps> = ({ settings, onChange }) =
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <Label htmlFor="letterhead">Usar papel timbrado</Label>
-          <p className="text-sm text-muted-foreground">
-            Inclui seu cabeçalho personalizado em todas as páginas
-          </p>
-        </div>
-        <Switch 
-          id="letterhead" 
-          checked={settings.use_letterhead}
-          onCheckedChange={handleLetterheadChange}
-        />
-      </div>
-
       <div className="space-y-3">
         <Label>Tamanho das margens</Label>
         <RadioGroup 

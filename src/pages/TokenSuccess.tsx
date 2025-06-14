@@ -20,10 +20,15 @@ const TokenSuccess: React.FC = () => {
       if (user) {
         try {
           setLoading(true);
+          
+          // Limpar o cache de tokens para garantir dados atualizados
+          tokenService.clearAllTokenCache();
+          
           await new Promise(resolve => setTimeout(resolve, 2500));
-          const tokens = await tokenService.getTokenBalance();
+          // Buscar saldo atualizado após a compra
+          const tokens = await tokenService.getPersonalTokenBalance();
           setCurrentTokens(tokens);
-          console.log("Tokens carregados:", tokens);
+          console.log("Tokens carregados após compra:", tokens);
         } catch (error) {
           console.error("Error fetching Tokens:", error);
           toast.error("Erro ao carregar saldo de Tokens", {

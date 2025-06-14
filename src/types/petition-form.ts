@@ -1,7 +1,6 @@
-
 export interface Question {
   id: string;
-  type: 'text' | 'textarea' | 'select' | 'checkbox' | 'date' | 'file' | 'multiEntry' | 'combobox';
+  type: 'text' | 'textarea' | 'select' | 'checkbox' | 'date' | 'file' | 'multiEntry' | 'combobox' | 'dynamic-select';
   field: string;
   question: string;
   options?: { value: string | boolean; label: string }[];
@@ -12,6 +11,7 @@ export interface Question {
   label?: string; // Adicionando a propriedade label para uso no componente combobox
   allowCustomValues?: boolean; // Flag para permitir valores personalizados no combobox
   dynamicOptions?: boolean; // Flag para indicar que as opções são carregadas dinamicamente
+  dependsOn?: string; // Campo do qual este campo depende
 }
 
 export interface QuestionOption {

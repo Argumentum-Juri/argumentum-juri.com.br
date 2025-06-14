@@ -1,4 +1,3 @@
-
 import { supabase } from "@/integrations/supabase/client";
 import { PetitionDetail } from "@/types";
 import { PetitionStatus } from "@/types/enums";
@@ -54,6 +53,9 @@ export const getPetitionDetail = async (id: string): Promise<PetitionDetail | nu
       console.log("No petition detail found with ID:", id);
       return null;
     }
+
+    // Log para debug das respostas do formulário
+    console.log("Form answers em getPetitionDetail:", data.form_answers);
 
     const attachments = Array.isArray(data.petition_attachments) 
       ? data.petition_attachments.map(a => {
@@ -136,7 +138,8 @@ export const getPetitionDetail = async (id: string): Promise<PetitionDetail | nu
       user: data.profiles,
       reviews: Array.isArray(data.petition_reviews) ? data.petition_reviews : [],
       attachments: attachments,
-      comments: comments
+      comments: comments,
+      form_answers: data.form_answers as Record<string, any> || {}
     };
 
     return result;

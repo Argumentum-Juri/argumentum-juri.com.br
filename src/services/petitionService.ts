@@ -1,7 +1,9 @@
 
-// Este arquivo agora serve como um façade para o módulo refatorado
-// Mantém a compatibilidade com código existente que usa este arquivo
+// This file serves as a re-export of petitionService for backward compatibility
+import { petitionService } from './index';
 
-import { petitionService } from './petition';
+// Add the default petition status to help prevent constraint violations
+export const DEFAULT_PETITION_STATUS = 'draft';
+
 export { petitionService };
 export default petitionService;

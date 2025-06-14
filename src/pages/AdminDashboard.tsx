@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from "@/components/ui/button";
 import { useAuth } from '@/contexts/AuthContext';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
-import { petitionService } from '@/services/petitionService';
+import { petitionService } from '@/services';
 import { adminService } from '@/services/adminService';
 import { userService } from '@/services/userService';
 import { Petition, PetitionStatus } from '@/types';

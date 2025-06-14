@@ -7,8 +7,8 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 // Importa ícones necessários
 import { AlertCircle, FileText, Trash2, Loader2 } from 'lucide-react';
 import { PetitionSettings as PetitionSettingsType } from '@/types'; // Renomeado
-// Importa o SERVIÇO atualizado
-import { petitionSettings } from '@/services/petitionSettingsService';
+// Corrige o import para usar a exportação default correta
+import petitionSettingsService from '@/services/petitionSettingsService';
 import { toast } from 'sonner'; // Usa sonner para toasts
 import { cn } from '@/lib/utils'; // Para classes condicionais
 
@@ -50,15 +50,15 @@ const TemplateSettings: React.FC<TemplateSettingsProps> = ({ settings, onChange 
     try {
       console.log(`[TemplateSettings] Chamando uploadFile para petition_template`);
       // Chama o serviço atualizado, passando o tipo específico
-      const result = await petitionSettings.uploadFile(settings.user_id, 'petition_template', file);
+      const result = await petitionSettingsService.uploadFile(settings.user_id, 'petition_template', file);
 
-      if (result && result.url && result.key) {
+      if (result && result.url && result.r2_key) {
         // Atualiza o estado pai com URL, Key, Provider e nome original
         const settingsUpdate: Partial<PetitionSettingsType> = {
           petition_template_url: result.url,
-          petition_template_r2_key: result.key,
+          petition_template_r2_key: result.r2_key,
           petition_template_storage_provider: 'r2',
-          petition_template_original_filename: result.originalFilename
+          petition_template_original_filename: file.name
         };
         
         onChange(settingsUpdate);
@@ -77,7 +77,7 @@ const TemplateSettings: React.FC<TemplateSettingsProps> = ({ settings, onChange 
     }
   };
 
-  // Função de Exclusão ATUALIZADA
+  // Função de Exclusão ATUALIZADA para limpar registros no banco
   const handleFileRemove = async () => {
     // Pega a key R2 do estado atual vindo das props
     const r2Key = settings.petition_template_r2_key;
@@ -92,7 +92,7 @@ const TemplateSettings: React.FC<TemplateSettingsProps> = ({ settings, onChange 
       try {
         console.log(`[TemplateSettings] Chamando deleteFile para key: ${r2Key}`);
         // Chama o serviço que invoca a Edge Function
-        const success = await petitionSettings.deleteFile(r2Key);
+        const success = await petitionSettingsService.deleteFile(r2Key);
 
         if (success) {
           // Limpa os campos relevantes no estado pai
@@ -102,6 +102,17 @@ const TemplateSettings: React.FC<TemplateSettingsProps> = ({ settings, onChange 
             petition_template_storage_provider: null,
             petition_template_original_filename: null // Limpar nome original
           };
+          
+          // Atualizar explicitamente o registro no banco
+          if (settings.user_id) {
+            await petitionSettingsService.updateSettings({
+              user_id: settings.user_id,
+              petition_template_url: null,
+              petition_template_r2_key: null, 
+              petition_template_storage_provider: null,
+              petition_template_original_filename: null
+            });
+          }
           
           onChange(settingsUpdate);
           toast.success('Modelo de petição removido com sucesso.');

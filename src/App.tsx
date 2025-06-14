@@ -1,33 +1,25 @@
 
 import { createBrowserRouter, RouterProvider, ScrollRestoration } from "react-router-dom";
 import { Toaster } from "@/components/ui/sonner";
+import { AuthProvider } from "./contexts/AuthContext";
+import Layout from "./components/Layout";
+import { Loader2 } from "lucide-react";
 
-// LandingPage
+// Importe suas páginas e componentes de rota
 import LandingPage from "./pages/LandingPage";
-
-// Pages
-import Auth from "./pages/Auth";
+import AuthPage from "./pages/Auth";
 import Terms from "./pages/Terms";
 import Privacy from "./pages/Privacy";
 import Security from "./pages/Security";
 import Help from "./pages/Help";
 import FAQ from "./pages/FAQ";
-
-// Context
-import { AuthProvider } from "./contexts/AuthContext";
-import { TeamProvider } from "./contexts/TeamContext";
-import Layout from "./components/Layout";
 import PrivateRoute from "./components/PrivateRoute";
-
-// Admin
+import AdminRoute from "./components/AdminRoute";
 import AdminManagement from "./pages/AdminManagement";
 import UsersManagement from "./pages/UsersManagement";
 import AdminDashboard from "./pages/AdminDashboard";
 import AdminPetitionList from "./pages/AdminPetitionList";
 import AdminPetitionDetail from "./pages/AdminPetitionDetail";
-import AdminRoute from "./components/AdminRoute";
-
-// User
 import Teams from "./pages/Teams";
 import Stats from "./pages/Stats";
 import TokenStore from "./pages/TokenStore";
@@ -39,8 +31,9 @@ import PetitionDetail from "./pages/PetitionDetail";
 import PetitionSettings from "./pages/PetitionSettings";
 import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
+import AppContent from "./components/AppContent";
 
-// Define the router with the data router approach
+// Definição do router
 const router = createBrowserRouter([
   {
     path: "/",
@@ -48,29 +41,14 @@ const router = createBrowserRouter([
   },
   {
     path: "/auth",
-    element: <Layout><ScrollRestoration /><Auth /></Layout>,
+    element: <Layout><ScrollRestoration /><AuthPage /></Layout>,
   },
   // Static Pages
-  {
-    path: "/help",
-    element: <Layout><ScrollRestoration /><Help /></Layout>,
-  },
-  {
-    path: "/faq",
-    element: <Layout><ScrollRestoration /><FAQ /></Layout>,
-  },
-  {
-    path: "/terms",
-    element: <Layout><ScrollRestoration /><Terms /></Layout>,
-  },
-  {
-    path: "/privacy",
-    element: <Layout><ScrollRestoration /><Privacy /></Layout>,
-  },
-  {
-    path: "/security",
-    element: <Layout><ScrollRestoration /><Security /></Layout>,
-  },
+  { path: "/help", element: <Layout><ScrollRestoration /><Help /></Layout> },
+  { path: "/faq", element: <Layout><ScrollRestoration /><FAQ /></Layout> },
+  { path: "/terms", element: <Layout><ScrollRestoration /><Terms /></Layout> },
+  { path: "/privacy", element: <Layout><ScrollRestoration /><Privacy /></Layout> },
+  { path: "/security", element: <Layout><ScrollRestoration /><Security /></Layout> },
   // Authenticated Routes
   {
     path: "/dashboard",
@@ -96,7 +74,6 @@ const router = createBrowserRouter([
     path: "/profile",
     element: <Layout><ScrollRestoration /><PrivateRoute><Profile /></PrivateRoute></Layout>,
   },
-  // Token Routes
   {
     path: "/tokens/store",
     element: <Layout><ScrollRestoration /><PrivateRoute><TokenStore /></PrivateRoute></Layout>,
@@ -105,7 +82,6 @@ const router = createBrowserRouter([
     path: "/tokens/success",
     element: <Layout><ScrollRestoration /><PrivateRoute><TokenSuccess /></PrivateRoute></Layout>,
   },
-  // Team Route
   {
     path: "/teams",
     element: <Layout><ScrollRestoration /><PrivateRoute><Teams /></PrivateRoute></Layout>,
@@ -113,23 +89,23 @@ const router = createBrowserRouter([
   // Admin Routes
   {
     path: "/admin/dashboard",
-    element: <AdminRoute><ScrollRestoration /><Layout><AdminDashboard /></Layout></AdminRoute>,
+    element: <Layout><ScrollRestoration /><AdminRoute><AdminDashboard /></AdminRoute></Layout>,
   },
   {
     path: "/admin/petitions",
-    element: <AdminRoute><ScrollRestoration /><Layout><AdminPetitionList /></Layout></AdminRoute>,
+    element: <Layout><ScrollRestoration /><AdminRoute><AdminPetitionList /></AdminRoute></Layout>,
   },
   {
     path: "/admin/petitions/:id",
-    element: <AdminRoute><Layout><ScrollRestoration /><AdminPetitionDetail /></Layout></AdminRoute>,
+    element: <Layout><ScrollRestoration /><AdminRoute><AdminPetitionDetail /></AdminRoute></Layout>,
   },
   {
     path: "/admin/admins",
-    element: <AdminRoute><Layout><ScrollRestoration /><AdminManagement /></Layout></AdminRoute>,
+    element: <Layout><ScrollRestoration /><AdminRoute><AdminManagement /></AdminRoute></Layout>,
   },
   {
     path: "/admin/users",
-    element: <AdminRoute><Layout><ScrollRestoration /><UsersManagement /></Layout></AdminRoute>,
+    element: <Layout><ScrollRestoration /><AdminRoute><UsersManagement /></AdminRoute></Layout>,
   },
   // Stats Route
   {
@@ -146,10 +122,8 @@ const router = createBrowserRouter([
 function App() {
   return (
     <AuthProvider>
-      <TeamProvider>
-        <RouterProvider router={router} />
-        <Toaster />
-      </TeamProvider>
+      <AppContent router={router} />
+      <Toaster position="top-right" />
     </AuthProvider>
   );
 }

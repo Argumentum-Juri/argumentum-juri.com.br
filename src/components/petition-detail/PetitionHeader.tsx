@@ -3,6 +3,7 @@ import React from 'react';
 import { Petition } from '@/types';
 import { formatDate } from '@/utils/formatDate';
 import StatusBadge from '@/components/StatusBadge';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 interface PetitionHeaderProps {
   petition: Petition;
@@ -11,6 +12,8 @@ interface PetitionHeaderProps {
 }
 
 const PetitionHeader: React.FC<PetitionHeaderProps> = ({ petition, isLoading, hideId = false }) => {
+  const isMobile = useIsMobile();
+
   if (isLoading) {
     return (
       <div className="space-y-2">
@@ -21,16 +24,16 @@ const PetitionHeader: React.FC<PetitionHeaderProps> = ({ petition, isLoading, hi
   }
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">{petition.title}</h1>
-        <StatusBadge status={petition.status} className="ml-2" />
+    <div className="space-y-2 w-full">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+        <h1 className="text-xl md:text-2xl font-bold tracking-tight">{petition.title}</h1>
+        <StatusBadge status={petition.status} className="self-start sm:self-auto" />
       </div>
-      <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs sm:text-sm text-muted-foreground">
         <p>Criada em: {formatDate(petition.createdAt)}</p>
         <p>Atualizada em: {formatDate(petition.updatedAt)}</p>
         {!hideId && (
-          <p>ID: <span className="font-mono">{petition.id}</span></p>
+          <p className="w-full sm:w-auto">ID: <span className="font-mono text-xs">{petition.id}</span></p>
         )}
       </div>
     </div>

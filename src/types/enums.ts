@@ -6,7 +6,9 @@ export enum PetitionStatus {
   REVIEW = 'review',
   APPROVED = 'approved',
   REJECTED = 'rejected',
-  COMPLETE = 'complete'
+  COMPLETE = 'complete',
+  PAYMENT_FAILED = 'payment_failed',
+  DRAFT = 'draft'
 }
 
 export type PetitionError = {

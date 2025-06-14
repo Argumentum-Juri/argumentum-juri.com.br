@@ -12,18 +12,35 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { inviteToTeam } from "@/services/team";
-import { toast } from "sonner";
+import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface TeamInviteFormProps {
   teamId: string;
   onInviteSent: () => void;
+  userRole?: string;
 }
 
-const TeamInviteForm: React.FC<TeamInviteFormProps> = ({ teamId, onInviteSent }) => {
+const TeamInviteForm: React.FC<TeamInviteFormProps> = ({ teamId, onInviteSent, userRole = "owner" }) => {
+  const { user } = useAuth();
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("operador");
   const [isLoading, setIsLoading] = useState(false);
+  const { toast } = useToast();
+  
+  // Verificar se o usuário tem permissão para convidar membros
+  const canInvite = userRole === "owner" || userRole === "gestor";
+  
+  if (!canInvite) {
+    return (
+      <div className="text-center p-4 border rounded-md bg-muted/40">
+        <p className="text-muted-foreground">
+          Apenas membros com permissão de gestor ou proprietário podem convidar novos membros.
+        </p>
+      </div>
+    );
+  }
 
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,7 +71,7 @@ const TeamInviteForm: React.FC<TeamInviteFormProps> = ({ teamId, onInviteSent })
           email, 
           teamId, 
           role,
-          inviterId: invite.inviter_id 
+          inviterId: user?.id
         },
         headers: { 
           Authorization: `Bearer ${sessionData.session.access_token}`

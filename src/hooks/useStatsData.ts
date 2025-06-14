@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { tokenService } from "@/services/tokenService";
@@ -206,12 +205,83 @@ export const useStatsData = (userId: string | undefined) => {
       setLoading(true);
       
       try {
-        const { data: petitions, error } = await supabase
-          .from('petitions')
-          .select('*')
-          .eq('user_id', userId);
+        // Primeiro verificamos se o usuário pertence a alguma equipe
+        const { data: teamMemberData, error: teamMemberError } = await supabase
+          .from('team_members')
+          .select('team_id')
+          .eq('user_id', userId)
+          .maybeSingle();
+          
+        let petitions = [];
         
-        if (error) throw error;
+        if (teamMemberError) {
+          console.error("Erro ao verificar associação à equipe:", teamMemberError);
+        }
+        
+        if (teamMemberData?.team_id) {
+          // O usuário faz parte de uma equipe, vamos buscar as petições de toda a equipe
+          console.log(`Usuário ${userId} pertence à equipe ${teamMemberData.team_id}, buscando estatísticas da equipe`);
+          
+          // 1. Buscar todos os membros da equipe
+          const { data: teamMembers, error: membersError } = await supabase
+            .from('team_members')
+            .select('user_id')
+            .eq('team_id', teamMemberData.team_id);
+            
+          if (membersError) {
+            console.error("Erro ao buscar membros da equipe:", membersError);
+            throw membersError;
+          }
+          
+          if (!teamMembers || teamMembers.length === 0) {
+            console.warn(`Nenhum membro encontrado para a equipe ${teamMemberData.team_id}`);
+          }
+          
+          // 2. Buscar todas as petições de todos os membros da equipe
+          const teamMemberIds = teamMembers?.map(member => member.user_id) || [];
+          
+          if (teamMemberIds.length > 0) {
+            // Se encontramos membros da equipe, buscamos suas petições
+            const { data: teamPetitions, error: petitionsError } = await supabase
+              .from('petitions')
+              .select('*')
+              .in('user_id', teamMemberIds);
+              
+            if (petitionsError) {
+              console.error("Erro ao buscar petições da equipe:", petitionsError);
+              throw petitionsError;
+            }
+            
+            petitions = teamPetitions || [];
+            console.log(`Encontradas ${petitions.length} petições para a equipe`);
+          }
+          
+          // 3. Também buscar petições vinculadas diretamente à equipe
+          const { data: teamLinkedPetitions, error: teamPetitionsError } = await supabase
+            .from('petitions')
+            .select('*')
+            .eq('team_id', teamMemberData.team_id);
+            
+          if (teamPetitionsError) {
+            console.error("Erro ao buscar petições vinculadas à equipe:", teamPetitionsError);
+          } else if (teamLinkedPetitions && teamLinkedPetitions.length > 0) {
+            // Adicionar essas petições ao conjunto, evitando duplicatas
+            const existingIds = new Set(petitions.map(p => p.id));
+            const newPetitions = teamLinkedPetitions.filter(p => !existingIds.has(p.id));
+            petitions = [...petitions, ...newPetitions];
+            console.log(`Adicionadas ${newPetitions.length} petições vinculadas diretamente à equipe`);
+          }
+        } else {
+          // Usuário não faz parte de uma equipe, buscamos apenas suas petições individuais
+          console.log(`Buscando estatísticas individuais para o usuário ${userId}`);
+          const { data: userPetitions, error } = await supabase
+            .from('petitions')
+            .select('*')
+            .eq('user_id', userId);
+          
+          if (error) throw error;
+          petitions = userPetitions || [];
+        }
         
         if (!petitions || petitions.length === 0) {
           setStats(prev => ({
@@ -273,9 +343,21 @@ export const useStatsData = (userId: string | undefined) => {
           }
         });
         
-        const petitionsByType = Object.entries(typeGroups).map(([name, value]) => ({ name, value }));
-        const petitionsByArea = Object.entries(areaGroups).map(([name, value]) => ({ name, value }));
-        const monthlyPetitions = Object.entries(monthlyData).map(([name, count]) => ({ name, count }));
+        // Properly type the chart data to ensure 'value' is always a number
+        const petitionsByType = Object.entries(typeGroups).map(([name, value]) => ({ 
+          name, 
+          value: value as number 
+        }));
+        
+        const petitionsByArea = Object.entries(areaGroups).map(([name, value]) => ({ 
+          name, 
+          value: value as number 
+        }));
+        
+        const monthlyPetitions = Object.entries(monthlyData).map(([name, count]) => ({ 
+          name, 
+          count: count as number 
+        }));
         
         setStats({
           totalPetitions,
@@ -288,7 +370,7 @@ export const useStatsData = (userId: string | undefined) => {
           monthlyPetitions
         });
         
-        fetchInvestmentTotal();
+        // Não chamamos automaticamente o fetchInvestmentTotal aqui, deixamos para o componente Stats decidir
         
       } catch (error: any) {
         console.error("Erro ao buscar estatísticas:", error);
@@ -298,7 +380,7 @@ export const useStatsData = (userId: string | undefined) => {
     };
 
     fetchStats();
-  }, [userId, calculateAverageDeliveryTime, fetchInvestmentTotal]);
+  }, [userId, calculateAverageDeliveryTime]);
 
-  return { stats, loading, investmentLoading, investmentError };
+  return { stats, loading, investmentLoading, investmentError, fetchInvestmentTotal };
 };

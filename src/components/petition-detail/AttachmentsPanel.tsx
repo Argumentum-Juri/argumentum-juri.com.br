@@ -16,7 +16,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { petitionService } from '@/services/petitionService';
+import { petitionService } from '@/services';
 import { toast } from 'sonner';
 
 interface AttachmentsPanelProps {

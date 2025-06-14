@@ -1,7 +1,8 @@
 
 import React from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { Loader2 } from 'lucide-react';
 
 interface PrivateRouteProps {
   children: React.ReactNode;
@@ -9,22 +10,27 @@ interface PrivateRouteProps {
 
 const PrivateRoute: React.FC<PrivateRouteProps> = ({ children }) => {
   const { user, isLoading, authInitialized } = useAuth();
-  
+  const location = useLocation();
+
+  // Aguardar inicialização da autenticação
   if (!authInitialized || isLoading) {
     return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="flex flex-col items-center">
-          <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
-          <p className="mt-4 text-lg font-medium">Carregando...</p>
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto mb-4" />
+          <p className="text-muted-foreground">Verificando sua sessão...</p>
         </div>
       </div>
     );
   }
-  
+
+  // Redirecionar para login se não autenticado
   if (!user) {
-    return <Navigate to="/auth" replace />;
+    console.log('[PrivateRoute] Usuário não autenticado, redirecionando para /auth');
+    return <Navigate to="/auth" state={{ from: location }} replace />;
   }
-  
+
+  // Usuário autenticado - renderizar conteúdo
   return <>{children}</>;
 };
 

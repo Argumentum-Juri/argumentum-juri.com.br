@@ -1,6 +1,7 @@
 
 export interface Team {
   id?: string;
+  name?: string; // Made optional to match with TeamContext
   created_at?: string;
   updated_at?: string;
   members?: TeamMember[];

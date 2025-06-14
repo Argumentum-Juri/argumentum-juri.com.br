@@ -1,277 +1,261 @@
 
 import React, { useState } from 'react';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
-import { Button } from '@/components/ui/button';
-import { PetitionSettings as PetitionSettingsType } from '@/types';
-import { petitionSettings } from '@/services/petitionSettingsService';
-import { toast } from 'sonner';
-import { Trash2, Loader2, Image, FileText } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { useToast } from "@/components/ui/use-toast";
+import { FileUpload } from "@/components/ui/file-upload";
+import { Button } from "@/components/ui/button";
+import { Upload, AlertCircle, File as FileIcon, Trash2 } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Spinner } from "@/components/ui/spinner";
+import { useSettings } from '@/contexts/SettingsContext';
+import { Separator } from "@/components/ui/separator";
 
-// Tipos específicos para os campos de arquivo nas configurações
-type SettingsFileType = 'logo' | 'letterhead_template';
+const LogoSettings = () => {
+  const { toast } = useToast();
+  const { settings, updateSettings, isLoading, removeLogo, removeLetterhead } = useSettings();
+  const [isLogoUploading, setIsLogoUploading] = useState(false);
+  const [isLetterheadUploading, setIsLetterheadUploading] = useState(false);
+  const [logoUploadError, setLogoUploadError] = useState<string | undefined>(undefined);
+  const [letterheadUploadError, setLetterheadUploadError] = useState<string | undefined>(undefined);
 
-interface LogoSettingsProps {
-  settings: Partial<PetitionSettingsType>; // Recebe as configurações parciais
-  onChange: (settingsUpdate: Partial<PetitionSettingsType>) => void; // Função para atualizar estado pai
-}
-
-const LogoSettings: React.FC<LogoSettingsProps> = ({ settings, onChange }) => {
-  // Estados de loading/deleting por tipo de arquivo
-  const [uploading, setUploading] = useState<Record<SettingsFileType, boolean>>({
-    logo: false,
-    letterhead_template: false,
-  });
-
-  const [deleting, setDeleting] = useState<Record<SettingsFileType, boolean>>({
-    logo: false,
-    letterhead_template: false,
-  });
-
-  // Função para obter o nome do arquivo
-  const getFileName = (fileType: SettingsFileType): string => {
-    // Usar o nome original do arquivo, se disponível
-    if (fileType === 'logo' && settings.logo_original_filename) {
-      return settings.logo_original_filename;
-    } else if (fileType === 'letterhead_template' && settings.letterhead_template_original_filename) {
-      return settings.letterhead_template_original_filename;
-    }
-    
-    // Caso não tenha o nome original, extrair do r2Key
-    const r2Key = fileType === 'logo' ? settings.logo_r2_key : settings.letterhead_template_r2_key;
-    if (!r2Key) return '';
-    
-    // Extrai o nome do arquivo da chave R2
-    const fileName = r2Key.split('/').pop() || '';
-    return fileName;
-  };
-
-  const handleUseLetterheadChange = (checked: boolean) => {
-    onChange({ use_letterhead: checked });
-  };
-
-  // Função de Upload ATUALIZADA
-  const handleFileUpload = async (
-    e: React.ChangeEvent<HTMLInputElement>,
-    fileType: SettingsFileType
-  ) => {
-    if (!e.target.files || e.target.files.length === 0 || !settings.user_id) {
-        if(!settings.user_id) toast.error("ID do usuário não encontrado para upload.");
-        return;
-    }
-
-    const file = e.target.files[0];
-    setUploading(prev => ({ ...prev, [fileType]: true }));
+  const handleLogoSelected = async (file: File) => {
+    setIsLogoUploading(true);
+    setLogoUploadError(undefined);
 
     try {
-      console.log(`[LogoSettings] Chamando uploadFile para tipo: ${fileType}`);
-      // Chama o serviço atualizado
-      const result = await petitionSettings.uploadFile(settings.user_id, fileType, file);
-
-      if (result && result.url && result.key) {
-        // Atualiza o estado pai com URL, Key, Provider e nome original
-        const settingsUpdate: Partial<PetitionSettingsType> = {};
-        
-        // Usando type assertion para garantir que TypeScript entenda que estas propriedades são válidas
-        if (fileType === 'logo') {
-          settingsUpdate.logo_url = result.url;
-          settingsUpdate.logo_r2_key = result.key;
-          settingsUpdate.logo_storage_provider = 'r2';
-          settingsUpdate.logo_original_filename = result.originalFilename;
-        } else if (fileType === 'letterhead_template') {
-          settingsUpdate.letterhead_template_url = result.url;
-          settingsUpdate.letterhead_template_r2_key = result.key;
-          settingsUpdate.letterhead_template_storage_provider = 'r2';
-          settingsUpdate.letterhead_template_original_filename = result.originalFilename;
-        }
-
-        onChange(settingsUpdate);
-        toast.success(`Arquivo ${fileType === 'logo' ? 'do logo' : 'de modelo'} enviado com sucesso!`);
-      } else {
-         // O serviço já deve mostrar um toast de erro internamente
-         console.error(`[LogoSettings] Falha no upload R2 para ${fileType}`);
-         // Pode adicionar um toast genérico se o serviço não o fizer
-      }
-
-    } catch (error) {
-      // Erros inesperados (o serviço deve tratar a maioria)
-      console.error(`[LogoSettings] Erro inesperado no upload ${fileType}:`, error);
-      toast.error(`Erro inesperado ao enviar o arquivo ${fileType}.`);
+      await updateSettings({ fileObj: file, fileType: 'logo' });
+      toast({
+        title: "Logo atualizado!",
+        description: "O logo da sua petição foi atualizado com sucesso.",
+      });
+    } catch (error: any) {
+      console.error("Error uploading logo:", error);
+      setLogoUploadError(error.message || 'Ocorreu um erro ao enviar o logo.');
+      toast({
+        variant: "destructive",
+        title: "Erro ao atualizar o logo!",
+        description: error.message || "Ocorreu um erro ao atualizar o logo da sua petição.",
+      });
     } finally {
-      setUploading(prev => ({ ...prev, [fileType]: false }));
-       // Limpa o valor do input de arquivo para permitir re-upload do mesmo arquivo
-       e.target.value = '';
+      setIsLogoUploading(false);
     }
   };
 
-  // Função de Exclusão ATUALIZADA
-  const handleFileRemove = async (fileType: SettingsFileType) => {
-      // Pega a key R2 correspondente do estado atual
-      let r2Key: string | null | undefined;
-      
-      if (fileType === 'logo') {
-        r2Key = settings.logo_r2_key;
-      } else if (fileType === 'letterhead_template') {
-        r2Key = settings.letterhead_template_r2_key;
-      }
+  const handleLetterheadSelected = async (file: File) => {
+    setIsLetterheadUploading(true);
+    setLetterheadUploadError(undefined);
 
-      if (!r2Key) {
-          toast.error("Não foi possível encontrar a referência do arquivo para exclusão.");
-          console.warn(`Tentativa de excluir ${fileType} sem r2_key.`);
-          return;
-      }
-
-      if (confirm(`Tem certeza que deseja remover o ${fileType === 'logo' ? 'logo' : 'modelo de papel timbrado'}?`)) {
-          setDeleting(prev => ({ ...prev, [fileType]: true }));
-          try {
-              console.log(`[LogoSettings] Chamando deleteFile para key: ${r2Key}`);
-              // Chama o serviço de exclusão que usa a Edge Function
-              const success = await petitionSettings.deleteFile(r2Key);
-
-              if (success) {
-                  // Se a exclusão no R2 funcionou, limpa os campos no estado pai
-                  const settingsUpdate: Partial<PetitionSettingsType> = {};
-                  
-                  if (fileType === 'logo') {
-                    settingsUpdate.logo_url = null;
-                    settingsUpdate.logo_r2_key = null;
-                    settingsUpdate.logo_storage_provider = null;
-                    settingsUpdate.logo_original_filename = null; // Limpar nome original
-                  } else if (fileType === 'letterhead_template') {
-                    settingsUpdate.letterhead_template_url = null;
-                    settingsUpdate.letterhead_template_r2_key = null;
-                    settingsUpdate.letterhead_template_storage_provider = null;
-                    settingsUpdate.letterhead_template_original_filename = null; // Limpar nome original
-                  }
-
-                  onChange(settingsUpdate); // Atualiza estado pai
-                  toast.success(`Arquivo ${fileType === 'logo' ? 'do logo' : 'de modelo'} removido.`);
-              } else {
-                   // O serviço deleteFile já deve ter mostrado um toast de erro
-                   console.error(`[LogoSettings] Falha ao excluir ${fileType} com key ${r2Key}`);
-              }
-          } catch (error) {
-              console.error(`[LogoSettings] Erro inesperado ao remover ${fileType}:`, error);
-              toast.error("Erro inesperado ao remover o arquivo.");
-          } finally {
-              setDeleting(prev => ({ ...prev, [fileType]: false }));
-          }
-      }
+    try {
+      await updateSettings({ letterheadFileObj: file, fileType: 'letterhead' });
+      toast({
+        title: "Timbrado atualizado!",
+        description: "O papel timbrado da sua petição foi atualizado com sucesso.",
+      });
+    } catch (error: any) {
+      console.error("Error uploading letterhead:", error);
+      setLetterheadUploadError(error.message || 'Ocorreu um erro ao enviar o timbrado.');
+      toast({
+        variant: "destructive",
+        title: "Erro ao atualizar o timbrado!",
+        description: error.message || "Ocorreu um erro ao atualizar o timbrado da sua petição.",
+      });
+    } finally {
+      setIsLetterheadUploading(false);
+    }
   };
 
-  // --- JSX ---
+  const handleLogoError = (error: string) => {
+    setLogoUploadError(error);
+    toast({
+      variant: "destructive",
+      title: "Erro ao fazer upload do logo!",
+      description: error,
+    });
+  };
+
+  const handleLetterheadError = (error: string) => {
+    setLetterheadUploadError(error);
+    toast({
+      variant: "destructive",
+      title: "Erro ao fazer upload do timbrado!",
+      description: error,
+    });
+  };
+
+  const handleRemoveLogo = async () => {
+    try {
+      await removeLogo();
+      toast({
+        title: "Logo removido!",
+        description: "O logo da sua petição foi removido com sucesso.",
+      });
+    } catch (error: any) {
+      console.error("Error removing logo:", error);
+      toast({
+        variant: "destructive",
+        title: "Erro ao remover o logo!",
+        description: error.message || "Ocorreu um erro ao remover o logo da sua petição.",
+      });
+    }
+  };
+
+  const handleRemoveLetterhead = async () => {
+    try {
+      await removeLetterhead();
+      toast({
+        title: "Timbrado removido!",
+        description: "O papel timbrado da sua petição foi removido com sucesso.",
+      });
+    } catch (error: any) {
+      console.error("Error removing letterhead:", error);
+      toast({
+        variant: "destructive",
+        title: "Erro ao remover o timbrado!",
+        description: error.message || "Ocorreu um erro ao remover o timbrado da sua petição.",
+      });
+    }
+  };
+
   return (
     <div className="space-y-6">
-      {/* Switch Usar Papel Timbrado (mantido) */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <Label htmlFor="use-letterhead" className="cursor-pointer">Usar papel timbrado</Label>
-          <Switch
-            id="use-letterhead"
-            checked={!!settings.use_letterhead} // Usa !! para garantir boolean
-            onCheckedChange={handleUseLetterheadChange}
-          />
-        </div>
-        <p className="text-sm text-muted-foreground">
-          Quando ativado, suas petições incluirão seu papel timbrado personalizado (logo e/ou modelo).
+      {/* Logo section */}
+      <div>
+        <h3 className="text-lg font-medium">Logo da Petição</h3>
+        <p className="text-sm text-muted-foreground mb-4">
+          Faça o upload do seu logotipo para ser exibido em seus documentos.
         </p>
+
+        <div className="border rounded-md p-4 space-y-4">
+          <FileUpload
+            onFileSelected={handleLogoSelected}
+            onError={handleLogoError}
+            accept={{
+              'image/*': ['.png', '.jpeg', '.jpg', '.gif']
+            }}
+            maxSize={5 * 1024 * 1024} // 5 MB
+          >
+            <div className="flex items-center justify-center w-full">
+              <label
+                className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg cursor-pointer bg-muted/50 hover:bg-muted/70 border-muted-foreground/25"
+              >
+                <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                  <Upload className="w-8 h-8 mb-3 text-muted-foreground" />
+                  <p className="mb-2 text-sm text-muted-foreground">
+                    <span className="font-semibold">Clique para fazer upload</span> ou arraste e solte
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    PNG, JPG ou GIF (máx. 5MB)
+                  </p>
+                </div>
+              </label>
+            </div>
+          </FileUpload>
+
+          {isLogoUploading && (
+            <div className="flex items-center justify-center">
+              <Spinner className="w-4 h-4 mr-2" /> Enviando...
+            </div>
+          )}
+          
+          {logoUploadError && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Erro</AlertTitle>
+              <AlertDescription>{logoUploadError}</AlertDescription>
+            </Alert>
+          )}
+          
+          {settings?.logo_original_filename && !isLogoUploading && (
+            <div className="bg-muted/50 p-3 rounded-md flex items-center justify-between">
+              <div className="flex items-center">
+                <FileIcon className="h-4 w-4 mr-2 text-muted-foreground" />
+                <span className="text-sm truncate max-w-[200px]">
+                  {settings.logo_original_filename}
+                </span>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleRemoveLogo}
+                disabled={isLoading || isLogoUploading}
+              >
+                <Trash2 className="h-4 w-4 text-destructive" />
+              </Button>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Seção visível apenas se 'use_letterhead' estiver ativo */}
-      {settings.use_letterhead && (
-        <>
-          {/* Upload/Preview Logo */}
-          <div className="space-y-2">
-            <Label htmlFor="logo-upload">Logo (imagem)</Label>
-            <div className="flex items-center gap-4">
-              <Input
-                id="logo-upload"
-                type="file"
-                className="flex-1"
-                onChange={(e) => handleFileUpload(e, 'logo')}
-                accept="image/png, image/jpeg, image/webp, image/svg+xml" // Aceita formatos comuns
-                disabled={uploading.logo || deleting.logo}
-              />
-              {uploading.logo && <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />}
-            </div>
-            {/* Preview e botão de remover */}
-            {settings.logo_url && (
-              <div className="mt-3 border rounded-md p-3 bg-muted/40">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-sm font-medium text-foreground flex items-center gap-2">
-                    <Image className="h-4 w-4 text-muted-foreground" />
-                    {getFileName('logo')}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 w-7 p-0 text-destructive hover:text-destructive"
-                    onClick={() => handleFileRemove('logo')}
-                    disabled={deleting.logo || uploading.logo}
-                    title="Remover Logo"
-                  >
-                    <span className="sr-only">Remover Logo</span>
-                    {deleting.logo ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                  </Button>
-                </div>
-                <div className="flex justify-center items-center bg-white p-2 rounded border"> 
-                    <img
-                        src={settings.logo_url}
-                        alt="Logo atual"
-                        className="max-h-20 object-contain"
-                        onError={(e) => {
-                          // Fallback em caso de erro ao carregar a imagem
-                          (e.target as HTMLImageElement).src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiIGNsYXNzPSJsdWNpZGUgbHVjaWRlLWltYWdlIj48cmVjdCB3aWR0aD0iMTgiIGhlaWdodD0iMTgiIHg9IjMiIHk9IjMiIHJ4PSIyIiByeT0iMiIvPjxjaXJjbGUgY3g9IjguNSIgY3k9IjguNSIgcj0iMS41Ii8+PHBhdGggZD0ibTIxIDE1LTMuODYtMy44NmEyIDIgMCAwIDAtMi44MiAwTDUgMjAiLz48L3N2Zz4=';
-                          console.error('Failed to load image:', settings.logo_url);
-                        }}
-                    />
-                </div>
-              </div>
-            )}
-          </div>
+      <Separator className="my-6" />
 
-          {/* Upload/Preview Papel Timbrado (Modelo DOCX/PDF) */}
-          <div className="space-y-2">
-            <Label htmlFor="letterhead-upload">Modelo de Papel Timbrado (DOCX, PDF)</Label>
-            <div className="flex items-center gap-4">
-                <Input
-                    id="letterhead-upload"
-                    type="file"
-                    className="flex-1"
-                    onChange={(e) => handleFileUpload(e, 'letterhead_template')}
-                    accept=".doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                    disabled={uploading.letterhead_template || deleting.letterhead_template}
-                />
-                 {uploading.letterhead_template && <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />}
+      {/* Letterhead section */}
+      <div>
+        <h3 className="text-lg font-medium">Papel Timbrado</h3>
+        <p className="text-sm text-muted-foreground mb-4">
+          Faça o upload do seu modelo de papel timbrado para ser usado em todos os seus documentos.
+        </p>
+
+        <div className="border rounded-md p-4 space-y-4">
+          <FileUpload
+            onFileSelected={handleLetterheadSelected}
+            onError={handleLetterheadError}
+            accept={{
+              'application/pdf': ['.pdf'],
+              'application/msword': ['.doc'],
+              'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx']
+            }}
+            maxSize={10 * 1024 * 1024} // 10 MB
+          >
+            <div className="flex items-center justify-center w-full">
+              <label
+                className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg cursor-pointer bg-muted/50 hover:bg-muted/70 border-muted-foreground/25"
+              >
+                <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                  <Upload className="w-8 h-8 mb-3 text-muted-foreground" />
+                  <p className="mb-2 text-sm text-muted-foreground">
+                    <span className="font-semibold">Clique para fazer upload</span> ou arraste e solte
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    PDF, DOC ou DOCX (máx. 10MB)
+                  </p>
+                </div>
+              </label>
             </div>
-            {/* Info do arquivo atual e botão de remover */}
-            {settings.letterhead_template_url && settings.letterhead_template_r2_key && (
-              <div className="mt-3 border rounded-md p-3 flex justify-between items-center bg-muted/40">
-                 <p className="text-sm text-foreground truncate mr-2 flex items-center gap-2" title={getFileName('letterhead_template')}>
-                    <FileText className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                    <span className="font-medium">{getFileName('letterhead_template')}</span>
-                 </p>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 w-7 p-0 text-destructive hover:text-destructive flex-shrink-0"
-                  onClick={() => handleFileRemove('letterhead_template')}
-                  disabled={deleting.letterhead_template || uploading.letterhead_template}
-                  title="Remover Modelo de Papel Timbrado"
-                >
-                  <span className="sr-only">Remover Modelo</span>
-                  {deleting.letterhead_template ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                </Button>
+          </FileUpload>
+
+          {isLetterheadUploading && (
+            <div className="flex items-center justify-center">
+              <Spinner className="w-4 h-4 mr-2" /> Enviando...
+            </div>
+          )}
+          
+          {letterheadUploadError && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Erro</AlertTitle>
+              <AlertDescription>{letterheadUploadError}</AlertDescription>
+            </Alert>
+          )}
+          
+          {settings?.letterhead_template_original_filename && !isLetterheadUploading && (
+            <div className="bg-muted/50 p-3 rounded-md flex items-center justify-between">
+              <div className="flex items-center">
+                <FileIcon className="h-4 w-4 mr-2 text-muted-foreground" />
+                <span className="text-sm truncate max-w-[200px]">
+                  {settings.letterhead_template_original_filename}
+                </span>
               </div>
-            )}
-             <p className="text-xs text-muted-foreground mt-1">
-                Faça upload de um arquivo DOCX ou PDF que será usado como base para o timbrado.
-             </p>
-          </div>
-        </>
-      )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleRemoveLetterhead}
+                disabled={isLoading || isLetterheadUploading}
+              >
+                <Trash2 className="h-4 w-4 text-destructive" />
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 };

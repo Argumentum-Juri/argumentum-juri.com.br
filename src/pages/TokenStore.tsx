@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, CreditCard, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -13,11 +13,18 @@ import { useTokenStore } from '@/hooks/useTokenStore';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useAuth } from '@/contexts/AuthContext';
+import { useTeamOwnership } from '@/hooks/useTeamOwnership';
 
 const TokenStore: React.FC = () => {
+  const navigate = useNavigate();
+  const { user, teamId } = useAuth();
+  const { isOwner: isTeamOwner } = useTeamOwnership(teamId);
+  
   const {
-    currentTokens,
-    loading,
+    // Use the correct property names based on the returned values from useTokenStore
+    teamTokens: currentTokens,
+    loadingTeamTokens: loading,
     purchaseLoading,
     customTokens,
     handlePlanPurchase,
@@ -34,6 +41,13 @@ const TokenStore: React.FC = () => {
 
   // Filtrar planos baseados no ciclo de cobrança selecionado
   const filteredPlans = SUBSCRIPTION_PLANS.filter(plan => plan.billingType === billingCycle);
+
+  // Verificar se o usuário é o proprietário da equipe
+  useEffect(() => {
+    if (!isTeamOwner && !loading) {
+      navigate('/dashboard');
+    }
+  }, [isTeamOwner, loading, navigate]);
 
   // Verificar status de assinatura ao carregar a página
   useEffect(() => {
@@ -52,6 +66,15 @@ const TokenStore: React.FC = () => {
 
     checkSubscriptionStatus();
   }, []);
+
+  // Novo efeito para definir automaticamente a aba com base na assinatura atual
+  useEffect(() => {
+    if (currentSubscription?.planId) {
+      // Verificar se o ID do plano contém 'annual' para identificar assinaturas anuais
+      const isAnnualPlan = currentSubscription.planId.includes('annual');
+      setBillingCycle(isAnnualPlan ? 'annual' : 'monthly');
+    }
+  }, [currentSubscription]);
 
   const handleSubscription = async (planId: string) => {
     // Verificar se o usuário já tem uma assinatura
@@ -107,6 +130,10 @@ const TokenStore: React.FC = () => {
     return currentSubscription?.planId === planId;
   };
   
+  if (!isTeamOwner) {
+    return null; // Será redirecionado no useEffect
+  }
+  
   return (
     <div className="py-6">
       <div className="max-w-6xl mx-auto px-4 sm:px-6">
@@ -140,7 +167,7 @@ const TokenStore: React.FC = () => {
         
         <div className="mb-6 flex justify-center">
           <Tabs 
-            defaultValue="monthly" 
+            defaultValue={billingCycle} 
             value={billingCycle}
             onValueChange={(value) => setBillingCycle(value as 'monthly' | 'annual')}
             className="w-full max-w-md mx-auto"

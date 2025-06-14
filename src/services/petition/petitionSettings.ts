@@ -1,4 +1,3 @@
-
 import { supabase } from "@/integrations/supabase/client";
 import { PetitionSettings } from "@/types"; 
 import { toast } from 'sonner';
@@ -369,6 +368,29 @@ export const petitionSettings = {
        toast.error(`Erro ao excluir arquivo: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
       return false;
     }
+  },
+
+  /**
+   * Update specific settings fields directly in the database without full form submission
+   * Useful for file operations that need to update the database after a file is deleted
+   */
+  updateSettings: async (userId: string, updates: Partial<PetitionSettings>): Promise<boolean> => {
+    try {
+      const { error } = await supabase
+        .from('petition_settings')
+        .update(updates)
+        .eq('user_id', userId);
+
+      if (error) {
+        console.error('Error updating settings:', error);
+        return false;
+      }
+      
+      return true;
+    } catch (err) {
+      console.error('Unexpected error in updateSettings:', err);
+      return false;
+    }
   }
 };
 
@@ -378,7 +400,8 @@ export const {
     saveSettings,
     getAllSettings,
     uploadFile,
-    deleteFile
+    deleteFile,
+    updateSettings
 } = petitionSettings;
 
 // Export default

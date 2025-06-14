@@ -1,156 +1,161 @@
 
 import React from 'react';
-import { Question } from '@/types/petition-form';
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, CheckCircle, Loader2, Paperclip, Coins } from 'lucide-react';
-import { allPossibleQuestions } from '@/utils/petitionFormQuestions';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { ArrowLeft, Check } from "lucide-react";
+import { Question } from '@/types/petition-form';
+import { DocumentInfo } from '@/types/documentInfo';
 
 interface PetitionSummaryProps {
   activeQuestions: Question[];
   answers: Record<string, any>;
-  attachedFiles: File[];
+  attachedFiles: DocumentInfo[];
   isSubmitting: boolean;
   onPrevious: () => void;
   onSubmit: () => void;
-  tokenCost?: number;
+  tokenCost: number;
 }
 
 export const PetitionSummary: React.FC<PetitionSummaryProps> = ({
+  activeQuestions,
   answers,
   attachedFiles,
   isSubmitting,
   onPrevious,
   onSubmit,
-  tokenCost = 16
+  tokenCost,
 }) => {
-  // Função para formatar o valor da resposta
-  const formatAnswer = (question: Question, value: any): string => {
-    if (!value && value !== false) return '';
+  // Format value for display based on type - updated with robust formatting logic
+  const formatAnswerValue = (question: Question, value: any): string => {
+    if (value === undefined || value === null) return 'Não informado';
+
+    // Verificar se é uma questão Sim/Não baseada nas opções
+    const isYesNoQuestion = question.options?.length === 2 && 
+      question.options.some(opt => opt.label === 'Sim' || opt.label === 'Não');
+
+    // Converter valores booleanos para Sim/Não ANTES de qualquer outro processamento
+    if (typeof value === 'boolean' || value === 'true' || value === 'false' || 
+        value === true || value === false || isYesNoQuestion) {
+      
+      // Para valores booleanos diretos
+      if (typeof value === 'boolean') {
+        return value ? 'Sim' : 'Não';
+      }
+      
+      // Para strings que representam booleanos
+      if (value === 'true' || value === true) return 'Sim';
+      if (value === 'false' || value === false) return 'Não';
+      
+      // Para questões Sim/Não, tentar encontrar a opção correspondente
+      if (isYesNoQuestion && question.options) {
+        const option = question.options.find((opt: any) => opt.value === value);
+        if (option) return option.label;
+      }
+    }
+
+    // Proteção contra objetos complexos - converter para formato legível
+    if (typeof value === 'object' && value !== null) {
+      if (Array.isArray(value)) {
+        // Tratar arrays baseado no tipo da questão
+        switch (question.type) {
+          case 'multiEntry':
+            return value.map((part: any) => 
+              `${part.type}: ${part.fullName} (${part.represented ? 'Representado' : 'Não representado'})`
+            ).join(', ');
+          case 'file':
+            return `${value.length} arquivo(s) anexado(s)`;
+          case 'select':
+          case 'combobox':
+          case 'dynamic-select':
+            return value.map(v => {
+              const option = question.options?.find((opt: any) => opt.value === v);
+              return option ? option.label : v;
+            }).join(', ');
+          default:
+            return value.join(', ');
+        }
+      } else {
+        // Para objetos não-array, tentar extrair informações úteis ou ignorar
+        return 'Dados estruturados (ver detalhes completos)';
+      }
+    }
 
     switch (question.type) {
-      case 'select':
-      case 'combobox':
-        if (Array.isArray(value)) {
-          return value.map(v => {
-            const option = question.options?.find(opt => opt.value === v);
-            return option ? option.label : v;
-          }).join(', ');
-        }
-        if (question.options) {
-          const option = question.options.find(opt => opt.value === value);
-          return option ? option.label : String(value);
-        }
-        return String(value);
-      
       case 'checkbox':
         return value ? 'Sim' : 'Não';
-      
       case 'date':
         try {
           return new Date(value).toLocaleDateString('pt-BR');
         } catch (e) {
           return String(value);
         }
-      
-      case 'multiEntry':
-        if (Array.isArray(value)) {
-          return value.map((part: any) => 
-            `${part.type}: ${part.fullName} (${part.represented ? 'Representado' : 'Não representado'})`
-          ).join('\n');
-        }
-        return String(value);
-      
       case 'file':
-        if (Array.isArray(value)) {
-          return value.map((file: any) => file.name || 'Arquivo sem nome').join('\n');
+        return `${attachedFiles.length} arquivo(s) anexado(s)`;
+      case 'select':
+      case 'combobox':
+      case 'dynamic-select':
+        if (question.options) {
+          const option = question.options.find(opt => opt.value === value);
+          return option?.label || String(value);
         }
         return String(value);
-        
       default:
         return String(value);
     }
   };
 
-  // Filtrar questões que devem ser exibidas com base nas condições
-  const questionsToShow = allPossibleQuestions.filter(question => {
-    if (!question.condition) return answers[question.field] !== undefined;
-    return question.condition(answers);
-  });
-
-  // Verificar se temos a pergunta de anexos do processo
-  const hasProcessAttachments = answers.process_attachments || [];
-
   return (
     <Card className="w-full max-w-3xl mx-auto shadow-lg border-primary/20">
       <CardContent className="pt-6 pb-6">
-        <h2 className="text-2xl font-bold mb-6 text-center text-primary">Resumo da Petição</h2>
-        
-        <Alert className="mb-4 bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900">
-          <Coins className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-          <AlertDescription className="text-amber-700 dark:text-amber-300">
-            <span className="font-medium">Esta petição custará {tokenCost} tokens do seu saldo.</span> 
-            O valor será debitado quando você enviar a petição.
-          </AlertDescription>
-        </Alert>
-        
-        <div className="space-y-6 bg-muted/20 p-6 rounded-lg">
-          {questionsToShow.map((question) => {
-            const value = answers[question.field];
-            if (value === undefined) return null;
+        <h2 className="text-xl font-bold mb-4 text-primary">Resumo da Petição</h2>
+        <p className="text-muted-foreground mb-6">
+          Verifique os dados abaixo antes de enviar sua solicitação.
+        </p>
 
-            return (
-              <div key={question.field} className="space-y-2">
-                <h3 className="font-medium text-lg text-primary/80">{question.question}</h3>
-                <p className="text-foreground whitespace-pre-wrap mt-1">
-                  {formatAnswer(question, value)}
-                </p>
-              </div>
-            );
-          })}
-
-          {hasProcessAttachments.length > 0 && (
-            <div className="space-y-2">
-              <h3 className="font-medium text-lg text-primary/80">Anexos do Processo</h3>
-              <div className="mt-2 space-y-2">
-                {hasProcessAttachments.map((file, index) => (
-                  <div key={index} className="flex items-center gap-2 bg-background p-2 rounded-md">
-                    <Paperclip className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm truncate">{file.name}</span>
-                  </div>
-                ))}
-              </div>
+        <div className="space-y-4 mb-6">
+          {activeQuestions.map((question) => (
+            <div key={question.field} className="border-b border-border pb-3">
+              <p className="font-medium text-foreground">{question.question}</p>
+              <p className="text-muted-foreground">{formatAnswerValue(question, answers[question.field])}</p>
             </div>
-          )}
-
+          ))}
+          
           {attachedFiles.length > 0 && (
-            <div className="space-y-2">
-              <h3 className="font-medium text-lg text-primary/80">Anexos:</h3>
-              <div className="mt-2 space-y-2">
-                {attachedFiles.map((file, index) => (
-                  <div key={index} className="flex items-center gap-2 bg-background p-2 rounded-md">
-                    <Paperclip className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm truncate">{file.name}</span>
-                  </div>
+            <div className="border-b border-border pb-3">
+              <p className="font-medium text-foreground">Arquivos Anexados</p>
+              <ul className="list-disc list-inside text-muted-foreground pl-2">
+                {attachedFiles.map((file) => (
+                  <li key={file.id}>{file.name} ({(file.size / 1024).toFixed(2)} KB)</li>
                 ))}
-              </div>
+              </ul>
             </div>
           )}
+          
+          <div className="border-b border-border pb-3 flex justify-between items-center">
+            <p className="font-medium text-foreground">Custo da Petição</p>
+            <p className="text-amber-600 dark:text-amber-400 font-semibold">{tokenCost} tokens</p>
+          </div>
         </div>
+
         <div className="flex justify-between mt-8">
-          <Button variant="outline" onClick={onPrevious} className="px-6 gap-1">
-            <ArrowLeft className="h-4 w-4" /> Voltar
+          <Button
+            variant="outline"
+            onClick={onPrevious}
+            className="px-4"
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" /> Voltar e Editar
           </Button>
           <Button
             onClick={onSubmit}
             disabled={isSubmitting}
-            className="gap-2 bg-primary hover:bg-primary/90 px-6"
+            className="bg-primary hover:bg-primary/90 px-6"
           >
             {isSubmitting ? (
-              <><Loader2 className="h-4 w-4 animate-spin" /> Enviando...</>
+              <>Processando...</>
             ) : (
-              <><CheckCircle className="h-4 w-4" /> Enviar Petição ({tokenCost} tokens)</>
+              <>
+                <Check className="h-4 w-4 mr-2" /> Confirmar e Enviar
+              </>
             )}
           </Button>
         </div>

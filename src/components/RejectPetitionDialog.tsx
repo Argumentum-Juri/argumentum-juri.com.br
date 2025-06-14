@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { X } from "lucide-react";
-import { toast } from "sonner";
+import { useToast } from "@/hooks/use-toast";
 import { petitionService } from "@/services";
 import { PetitionStatus } from '@/types/enums';
 
@@ -24,6 +24,7 @@ const RejectPetitionDialog: React.FC<RejectPetitionDialogProps> = ({ petitionId 
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { toast } = useToast();
   
   const handleSubmit = async () => {
     if (!reason.trim()) {

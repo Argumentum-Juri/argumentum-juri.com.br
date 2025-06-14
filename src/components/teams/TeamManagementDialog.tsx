@@ -31,6 +31,7 @@ const TeamManagementDialog: React.FC<TeamManagementDialogProps> = ({
   const { user } = useAuth();
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [invites, setInvites] = useState<TeamInvite[]>([]);
+  const [userRole, setUserRole] = useState<string>('member');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -48,11 +49,18 @@ const TeamManagementDialog: React.FC<TeamManagementDialogProps> = ({
       const teamMembers = await getTeamMembers(team.id);
       setMembers(teamMembers);
       
+      // Determinar a função do usuário atual na equipe
+      const currentMember = teamMembers.find(member => member.user_id === user?.id);
+      if (currentMember) {
+        setUserRole(currentMember.role);
+      }
+      
       // Buscar convites pendentes da equipe
       const { data: invitesData, error: invitesError } = await supabase
         .from('team_invites')
         .select('*')
-        .eq('team_id', team.id);
+        .eq('team_id', team.id)
+        .eq('status', 'pending');
       
       if (invitesError) {
         console.error("Erro ao carregar convites:", invitesError);
@@ -99,7 +107,8 @@ const TeamManagementDialog: React.FC<TeamManagementDialogProps> = ({
           <TabsContent value="invite">
             <TeamInviteForm 
               teamId={team.id || ''} 
-              onInviteSent={fetchTeamData} 
+              onInviteSent={fetchTeamData}
+              userRole={userRole}
             />
           </TabsContent>
           

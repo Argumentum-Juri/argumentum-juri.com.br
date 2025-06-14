@@ -51,3 +51,17 @@ CREATE TRIGGER set_subscription_renewals_updated_at
 BEFORE UPDATE ON public.subscription_renewals
 FOR EACH ROW
 EXECUTE FUNCTION update_subscription_renewals_updated_at();
+
+-- Add format_settings column to petitions table if it doesn't exist
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT FROM information_schema.columns
+    WHERE table_schema = 'public'
+    AND table_name = 'petitions'
+    AND column_name = 'format_settings'
+  ) THEN
+    ALTER TABLE public.petitions ADD COLUMN format_settings JSONB DEFAULT NULL;
+  END IF;
+END $$;
+

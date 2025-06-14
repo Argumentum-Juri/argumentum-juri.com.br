@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState } from 'react';
-import { getMyTeams, getTeamMembers } from '@/services/team';
+import { getMyTeams, getTeamMembers, getMyInvites } from '@/services/team';
 import { Team, TeamMember, TeamInvite } from '@/services/team/types';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from "sonner";
@@ -17,6 +17,7 @@ import { UserPlus, Users } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import TeamInviteForm from "@/components/teams/TeamInviteForm";
+import { supabase } from '@/integrations/supabase/client';
 
 const Teams = () => {
   const { user } = useAuth();
@@ -26,9 +27,11 @@ const Teams = () => {
   const [invites, setInvites] = useState<TeamInvite[]>([]);
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
   const [showInviteDialog, setShowInviteDialog] = useState(false);
+  const [userRole, setUserRole] = useState<string>('member');
 
   useEffect(() => {
     fetchTeams();
+    fetchInvites();
   }, []);
 
   useEffect(() => {
@@ -55,13 +58,39 @@ const Teams = () => {
     }
   };
 
+  const fetchInvites = async () => {
+    try {
+      // This will fetch invites for the user's email
+      const invitesData = await getMyInvites();
+      // This is already handled by MyInvites component
+    } catch (error) {
+      console.error("Erro ao carregar convites:", error);
+    }
+  };
+
   const fetchTeamData = async (teamId: string) => {
     try {
       const membersData = await getTeamMembers(teamId);
       setMembers(membersData);
       
-      // Em uma implementação real, aqui poderíamos buscar os convites também
-      setInvites([]);
+      // Determinar a função do usuário atual na equipe
+      const currentMember = membersData.find(member => member.user_id === user?.id);
+      if (currentMember) {
+        setUserRole(currentMember.role);
+      }
+      
+      // Buscar os convites pendentes da equipe
+      const { data: invitesData, error: invitesError } = await supabase
+        .from('team_invites')
+        .select('*')
+        .eq('team_id', teamId)
+        .eq('status', 'pending');
+        
+      if (invitesError) {
+        console.error("Erro ao carregar convites da equipe:", invitesError);
+      } else {
+        setInvites(invitesData as TeamInvite[]);
+      }
     } catch (error) {
       console.error("Erro ao carregar membros da equipe:", error);
       toast.error("Erro ao carregar membros da equipe");
@@ -89,7 +118,11 @@ const Teams = () => {
 
   const handleInviteResponded = () => {
     fetchTeams();
+    fetchInvites();
   };
+
+  // Verificar se o usuário pode convidar (é proprietário ou gestor)
+  const canInvite = userRole === 'owner' || userRole === 'gestor';
 
   return (
     <div className="container py-8 max-w-7xl">
@@ -100,7 +133,7 @@ const Teams = () => {
             Gerencie sua equipe e convide novos membros
           </p>
         </div>
-        {selectedTeam && (
+        {selectedTeam && canInvite && (
           <Button onClick={() => setShowInviteDialog(true)}>
             <UserPlus className="h-4 w-4 mr-2" />
             Convidar Membro
@@ -179,6 +212,7 @@ const Teams = () => {
             <TeamInviteForm 
               teamId={selectedTeam.id || ''} 
               onInviteSent={handleInviteSent} 
+              userRole={userRole}
             />
           )}
         </DialogContent>

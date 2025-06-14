@@ -5,7 +5,7 @@ import AverageDeliveryCard from './AverageDeliveryCard';
 import MonthlyVolumeChart from './MonthlyVolumeChart';
 import DistributionPieChart from './DistributionPieChart';
 import { formatCurrency } from '@/lib/utils';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, Lock } from 'lucide-react';
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface StatsContainerProps {
@@ -22,13 +22,15 @@ interface StatsContainerProps {
   loading: boolean;
   investmentLoading: boolean;
   investmentError?: string;
+  isTeamOwner?: boolean; // Nova prop para verificar se o usuário é dono da equipe
 }
 
 const StatsContainer: React.FC<StatsContainerProps> = ({
   stats,
   loading,
   investmentLoading,
-  investmentError
+  investmentError,
+  isTeamOwner = false // Valor padrão é falso
 }) => {
   return (
     <>
@@ -48,24 +50,38 @@ const StatsContainer: React.FC<StatsContainerProps> = ({
           value={stats.totalCompleted}
           loading={loading}
         />
-        {investmentError ? (
+        
+        {/* Card de Investimento apenas para donos de equipe */}
+        {isTeamOwner ? (
+          investmentError ? (
+            <div className="bg-card p-4 rounded-lg border shadow">
+              <Alert variant="destructive" className="bg-transparent border-0 shadow-none p-0">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  Erro ao carregar dados de investimento
+                </AlertDescription>
+              </Alert>
+              <div className="text-center mt-2 text-muted-foreground text-sm">
+                Tente novamente mais tarde
+              </div>
+            </div>
+          ) : (
+            <StatCard
+              title="Investimento Total"
+              value={formatCurrency(stats.totalInvested || 0)}
+              loading={investmentLoading}
+            />
+          )
+        ) : (
           <div className="bg-card p-4 rounded-lg border shadow">
-            <Alert variant="destructive" className="bg-transparent border-0 shadow-none p-0">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                Erro ao carregar dados de investimento
-              </AlertDescription>
-            </Alert>
-            <div className="text-center mt-2 text-muted-foreground text-sm">
-              Tente novamente mais tarde
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <Lock className="h-4 w-4" />
+              <span className="font-medium">Investimento Total</span>
+            </div>
+            <div className="text-center mt-4 text-muted-foreground text-sm">
+              Apenas proprietários da equipe podem visualizar esta informação
             </div>
           </div>
-        ) : (
-          <StatCard
-            title="Investimento Total"
-            value={formatCurrency(stats.totalInvested || 0)}
-            loading={investmentLoading}
-          />
         )}
       </div>
             

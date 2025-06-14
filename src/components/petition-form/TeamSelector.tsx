@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from "react";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -5,6 +6,7 @@ import { teamService } from '@/services/team';
 import { Team } from '@/services/team';
 import { Users } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface TeamSelectorProps {
   selectedTeamId: string | null;
@@ -12,32 +14,21 @@ interface TeamSelectorProps {
 }
 
 const TeamSelector: React.FC<TeamSelectorProps> = ({ selectedTeamId, onTeamChange }) => {
+  const { teamId, activeTeam, teamLoading } = useAuth();
   const [team, setTeam] = useState<Team | null>(null);
-  const [loading, setLoading] = useState(true);
   
   useEffect(() => {
-    const loadTeam = async () => {
-      try {
-        setLoading(true);
-        // Buscar a equipe do usuário atual
-        const userTeam = await teamService.getMyTeams();
-        if (userTeam.length > 0) {
-          setTeam(userTeam[0]); // Pega a primeira equipe (cada usuário só pode ter uma)
-          
-          // Se ainda não tiver um time selecionado, seleciona automaticamente a equipe do usuário
-          if (!selectedTeamId) {
-            onTeamChange(userTeam[0].id!);
-          }
-        }
-      } catch (error) {
-        console.error("Error loading team:", error);
-      } finally {
-        setLoading(false);
+    if (activeTeam) {
+      setTeam({ id: activeTeam.id, name: activeTeam.name || 'Minha Equipe' });
+      
+      // Se ainda não tiver um time selecionado, seleciona automaticamente a equipe do usuário
+      if (!selectedTeamId && teamId) {
+        onTeamChange(teamId);
       }
-    };
-    
-    loadTeam();
-  }, []);
+    } else {
+      setTeam(null);
+    }
+  }, [activeTeam, teamId, selectedTeamId, onTeamChange]);
   
   const handleTeamChange = (value: string) => {
     if (value === "personal") {
@@ -53,7 +44,7 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({ selectedTeamId, onTeamChang
         <Users className="h-4 w-4 mr-2" />
         Compartilhar com Equipe
       </Label>
-      {loading ? (
+      {teamLoading ? (
         <Skeleton className="h-10 w-full" />
       ) : team ? (
         <Select value={selectedTeamId || "personal"} onValueChange={handleTeamChange}>

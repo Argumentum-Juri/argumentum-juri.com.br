@@ -7,6 +7,8 @@ interface ImportMetaEnv {
   readonly NEXT_PUBLIC_R2_SECRET_ACCESS_KEY: string;
   readonly NEXT_PUBLIC_R2_BUCKET_NAME: string;
   readonly NEXT_PUBLIC_R2_PUBLIC_URL: string;
+  readonly VITE_API_BASE_URL: string;
+  readonly VITE_API_ANON_KEY: string;
 }
 
 interface ImportMeta {

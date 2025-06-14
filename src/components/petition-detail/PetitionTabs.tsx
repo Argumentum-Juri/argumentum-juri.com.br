@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, History, MessageSquare, Paperclip } from "lucide-react";
+import { FileText, History, MessageSquare, Paperclip, List } from "lucide-react";
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
@@ -13,7 +13,7 @@ interface PetitionTabsProps {
 
 const PetitionTabs: React.FC<PetitionTabsProps> = ({ 
   showDocumentsTabs,
-  activeTab,
+  activeTab = "documents",
   onTabChange
 }) => {
   const isMobile = useIsMobile();
@@ -29,6 +29,7 @@ const PetitionTabs: React.FC<PetitionTabsProps> = ({
   // Opções de tabs disponíveis
   const documentsTabs = [
     { value: "documents", label: "Documentos", icon: <FileText className="h-4 w-4" /> },
+    { value: "answers", label: "Detalhes", icon: <List className="h-4 w-4" /> },
     { value: "attachments", label: "Anexos", icon: <Paperclip className="h-4 w-4" /> },
     { value: "messages", label: "Mensagens", icon: <MessageSquare className="h-4 w-4" /> },
     { value: "history", label: "Histórico", icon: <History className="h-4 w-4" /> }
@@ -41,6 +42,7 @@ const PetitionTabs: React.FC<PetitionTabsProps> = ({
   ];
   
   const tabs = showDocumentsTabs ? documentsTabs : regularTabs;
+  const gridColsClass = `grid-cols-${tabs.length}`;
 
   // Render para mobile (usando Select)
   if (isMobile) {
@@ -72,20 +74,22 @@ const PetitionTabs: React.FC<PetitionTabsProps> = ({
   
   // Render para desktop (usando TabsList)
   return (
-    <TabsList className={`grid w-full mb-4 ${showDocumentsTabs ? 'grid-cols-4' : 'grid-cols-3'}`}>
-      {tabs.map(tab => (
-        <TabsTrigger 
-          key={tab.value} 
-          value={tab.value} 
-          className="flex items-center gap-2"
-          onClick={() => handleTabChange(tab.value)}
-          data-state={selectedTab === tab.value ? "active" : ""}
-        >
-          {tab.icon}
-          {tab.label}
-        </TabsTrigger>
-      ))}
-    </TabsList>
+    <div className="flex justify-center mb-4">
+      <TabsList className={`grid w-full max-w-3xl ${showDocumentsTabs ? 'grid-cols-5' : 'grid-cols-3'}`}>
+        {tabs.map(tab => (
+          <TabsTrigger 
+            key={tab.value} 
+            value={tab.value} 
+            className="flex items-center gap-2"
+            onClick={() => handleTabChange(tab.value)}
+            data-state={selectedTab === tab.value ? "active" : ""}
+          >
+            {tab.icon}
+            <span>{tab.label}</span>
+          </TabsTrigger>
+        ))}
+      </TabsList>
+    </div>
   );
 };
 

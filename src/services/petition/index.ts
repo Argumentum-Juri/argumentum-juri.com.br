@@ -1,7 +1,11 @@
 
 // Exporta todos os serviços de petição de forma agregada
 
-import { petitionCore } from './core';
+import { 
+    petitionCore, 
+    DEFAULT_PETITION_COST as CORE_DEFAULT_PETITION_COST, // Importar com alias para evitar conflito se reexportar abaixo
+    validateTokensForPetition as CORE_validateTokensForPetition 
+} from './core';
 import { petitionDocuments } from './petitionDocuments';
 import { petitionReviews } from './petitionReviews';
 import { petitionComments } from './petitionComments';
@@ -18,6 +22,7 @@ export const petitionService = {
   updatePetition: petitionCore.updatePetition,
   updatePetitionStatus: petitionCore.updatePetitionStatus,
   getAllPetitions: petitionCore.getAllPetitions, // Expose getAllPetitions directly
+  validateTokensForPetition: CORE_validateTokensForPetition, // <--- Adicionar aqui usando o alias
 
   // Operações de documentos
   getPetitionDocuments: petitionDocuments.getPetitionDocuments,

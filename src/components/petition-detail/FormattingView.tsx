@@ -5,11 +5,10 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Download, FileText, Loader2, Upload } from "lucide-react";
+import { Download, FileText, Loader2 } from "lucide-react";
 import { petitionSettings } from '@/services/petition/petitionSettings';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
-import { ScrollArea } from '../ui/scroll-area';
 
 interface FormattingViewProps {
   petitionId: string;
