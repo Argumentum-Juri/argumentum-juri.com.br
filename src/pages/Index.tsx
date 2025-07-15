@@ -1,11 +1,16 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
-import { useAuth } from '@/contexts/AuthContext';
+// ❌ Remova o useAuth antigo:
+// import { useAuth } from '@/contexts/AuthContext';
+// ✅ Importe o hook do GoAuthContext
+import { useGoAuth } from '@/contexts/GoAuthContext';
 import { Feather, CheckCircle, Clock, Shield, Scale, ScrollText, Users2, Library } from 'lucide-react';
 
 const Index = () => {
-  const { user } = useAuth();
+  // ❌ const { user } = useAuth();
+  // ✅ use o hook do GoAuthContext
+  const { user } = useGoAuth();
 
   const features = [
     {

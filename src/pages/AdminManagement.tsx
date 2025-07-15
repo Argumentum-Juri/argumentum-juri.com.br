@@ -1,13 +1,13 @@
 
 import React, { useState, useEffect } from 'react';
 import { adminService } from '@/services/adminService';
-import { useAuth } from '@/contexts/AuthContext';
+import { useGoAuth } from '@/contexts/GoAuthContext';
 import { Profile } from "@/types";
 import AdminUsersList from '@/components/admin/AdminUsersList';
 import CreateAdminForm from '@/components/admin/CreateAdminForm';
 
 const AdminManagement = () => {
-  const { user } = useAuth();
+  const { user } = useGoAuth();
   const [users, setUsers] = useState<Profile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   

@@ -1,10 +1,9 @@
-
 import { useState, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
 import { petitionService } from '@/services';
 import { toast } from 'sonner';
 import { PetitionDetail, PetitionStatus, PetitionAttachment, PetitionComment } from '@/types';
-import { useAuth } from '@/contexts/AuthContext';
+import { useGoAuth } from '@/contexts/GoAuthContext';
 import { supabase } from '@/integrations/supabase/client';
 // Temporariamente desabilitando cache para debug
 // import { getFromCache, saveToCache, CACHE_DURATIONS } from '@/utils/cacheUtils';
@@ -21,7 +20,11 @@ export const usePetitionDetailRefactored = (id: string) => {
   const [approveLoading, setApproveLoading] = useState<boolean>(false);
   const [rejectLoading, setRejectLoading] = useState<boolean>(false);
   
-  const { isAdmin, user, authInitialized, isLoading: authLoading } = useAuth();
+  const { user } = useGoAuth();
+  // For GoAuth, we simulate admin status and auth states
+  const isAdmin = false; // Simulated for GoAuth
+  const authInitialized = true;
+  const authLoading = false;
 
   // Validação específica para UUID
   const validatePetitionId = useCallback((id: string) => {

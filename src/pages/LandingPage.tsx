@@ -1,7 +1,7 @@
 
 import React, { FC, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
+import { useGoAuth } from '@/contexts/GoAuthContext';
 import HeroSection from '@/components/landing/sections/HeroSection';
 import FeaturesSection from '@/components/landing/sections/FeaturesSection';
 import HowItWorksSection from '@/components/landing/sections/HowItWorksSection';
@@ -32,7 +32,7 @@ const responsiveButtonStyles = `
 `;
 
 const LandingPage: FC = () => {
-  const { user, isAdmin } = useAuth();
+  const { user } = useGoAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -49,10 +49,10 @@ const LandingPage: FC = () => {
 
   useEffect(() => {
     if (user) {
-      // Redirecionar para o dashboard apropriado baseado no nível de acesso
-      navigate(isAdmin ? '/admin/dashboard' : '/dashboard');
+      // Redirecionar para o dashboard - no GoAuthContext não temos isAdmin
+      navigate('/dashboard');
     }
-  }, [user, isAdmin, navigate]);
+  }, [user, navigate]);
 
   // Se o usuário estiver autenticado, não renderiza nada pois será redirecionado
   if (user) return null;

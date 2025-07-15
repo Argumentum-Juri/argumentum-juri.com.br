@@ -73,7 +73,7 @@ export const PetitionCard: React.FC<PetitionCardProps> = ({ petition, adminView 
             </div>
             <div className="flex items-center space-x-1 text-xs text-muted-foreground">
               <Clock className="h-3 w-3" />
-              <span>{formatDate(petition.createdAt)}</span>
+              <span>{formatDate(petition.created_at)}</span>
             </div>
           </div>
         </CardFooter>

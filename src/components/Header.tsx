@@ -1,8 +1,6 @@
-// src/components/Header.tsx
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
-import { useTeamOwnership } from '@/hooks/useTeamOwnership';
+import { useGoAuth } from '@/contexts/GoAuthContext';
 import { Button } from "@/components/ui/button";
 import { 
   DropdownMenu, 
@@ -19,9 +17,8 @@ import {
   Users, Scroll, Wrench, Coins, FilePlus 
 } from "lucide-react";
 import { useIsMobile } from '@/hooks/use-mobile';
-import { tokenService } from '@/services/tokenService';
 import { Badge } from '@/components/ui/badge';
-import { getFromCache, saveToCache, CACHE_DURATIONS } from '@/utils/cacheUtils';
+import { useUserTokens } from '@/hooks/useUserTokens';
 
 export const TokenContext = React.createContext<{
   tokenCount: number | null;
@@ -36,65 +33,17 @@ export const TokenContext = React.createContext<{
 export const useTokenBalance = () => React.useContext(TokenContext);
 
 const Header = () => {
-  const { user, signOut, isAdmin, teamId } = useAuth();
-  const { isOwner: isTeamOwner } = useTeamOwnership(teamId);
+  const { user, signOut } = useGoAuth();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [tokenCount, setTokenCount] = useState<number | null>(null);
-  const [loadingTokens, setLoadingTokens] = useState(true);
+  
+  // Usar o hook correto para buscar tokens
+  const { tokens: userTokens, isLoading: loadingUserTokens, refreshTokens } = useUserTokens();
 
-  // Função para atualizar tokens com cache inteligente
-  const refreshTokens = useCallback(async (forceRefresh: boolean = false) => {
-    if (user && teamId) {
-      setLoadingTokens(true);
-      try {
-        // Verificar cache primeiro se não estiver forçando atualização
-        if (!forceRefresh) {
-          const cacheKey = `team_tokens_${teamId}`;
-          const cachedTokens = getFromCache<number>(cacheKey, CACHE_DURATIONS.SHORT);
-          if (cachedTokens !== null) {
-            console.log(`[Header] Usando tokens em cache: ${cachedTokens}`);
-            setTokenCount(cachedTokens);
-            setLoadingTokens(false);
-            return;
-          }
-        }
-        
-        // Buscar do servidor
-        console.log(`[Header] ${forceRefresh ? 'Forçando atualização' : 'Cache expirado'}, buscando tokens`);
-        const tokens = await tokenService.getTeamTokenBalance(teamId, forceRefresh);
-        setTokenCount(tokens);
-        
-        // Salvar no cache
-        const cacheKey = `team_tokens_${teamId}`;
-        saveToCache(cacheKey, tokens, `Tokens salvos no cache: ${tokens}`);
-        
-      } catch (error) {
-        console.error("[Header] Erro ao buscar saldo de Tokens da equipe:", error);
-        setTokenCount(null);
-      } finally {
-        setLoadingTokens(false);
-      }
-    } else {
-      setTokenCount(null); 
-      setLoadingTokens(false);
-    }
-  }, [user, teamId]); 
-  
-  // Carregar saldo de tokens com cache
-  useEffect(() => {
-    if (user && teamId) {
-      refreshTokens(false);
-    } else {
-      setTokenCount(null);
-      setLoadingTokens(false);
-    }
-  }, [refreshTokens, user, teamId]);
-  
   const handleLogout = async () => {
     try {
-      console.log('[Header] Fazendo logout e limpando caches');
+      console.log('[Header] Fazendo logout');
       await signOut();
       navigate('/');
     } catch (error) {
@@ -104,20 +53,20 @@ const Header = () => {
   
   const handleLogoClick = () => {
     if (user) {
-      navigate(isAdmin ? '/admin/dashboard' : '/dashboard');
+      navigate(user.isAdmin ? '/admin/dashboard' : '/dashboard');
     } else {
       navigate('/');
     }
   };
   
-  const navLinks = user && !isAdmin ? [
+  const navLinks = user && !user.isAdmin ? [
     { to: "/petitions/new", label: "Nova Petição", icon: <FilePlus className="h-4 w-4 mr-1" /> },
     { to: "/petitions", label: "Petições", icon: <Scroll className="h-4 w-4 mr-1" /> }, 
     { to: "/teams", label: "Equipe", icon: <Users className="h-4 w-4 mr-1" /> }, 
-    { to: "/petition-settings", label: "Personalização", icon: <Wrench className="h-4 w-4 mr-1" /> },
-    ...(isTeamOwner ? [{ to: "/tokens/store", label: "Loja de Tokens", icon: <Coins className="h-4 w-4 mr-1" /> }] : []),
+    { to: "/petition/settings", label: "Personalização", icon: <Wrench className="h-4 w-4 mr-1" /> },
+    { to: "/tokens", label: "Loja de Tokens", icon: <Coins className="h-4 w-4 mr-1" /> },
     { to: "/stats", label: "Estatísticas", icon: <BarChart2 className="h-4 w-4 mr-1" /> }
-  ] : user && isAdmin ? [
+  ] : user && user.isAdmin ? [
     { to: "/admin/petitions", label: "Petições", icon: <Scroll className="h-4 w-4 mr-1" /> }, 
     { to: "/admin/users", label: "Usuários", icon: <Users className="h-4 w-4 mr-1" /> }
   ] : [];
@@ -143,7 +92,7 @@ const Header = () => {
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="relative h-8 w-8 md:h-10 md:w-10 rounded-full">
           <Avatar className="h-8 w-8 md:h-10 md:w-10 cursor-pointer">
-            <AvatarFallback className={`${isAdmin ? 'bg-argumentum-goldDark' : 'bg-argumentum-gold'} text-argumentum-dark text-xs md:text-sm`}>
+            <AvatarFallback className={`${user?.isAdmin ? 'bg-argumentum-goldDark' : 'bg-argumentum-gold'} text-argumentum-dark text-xs md:text-sm`}>
               {user?.email ? user.email[0].toUpperCase() : 'U'}
             </AvatarFallback>
           </Avatar>
@@ -152,10 +101,10 @@ const Header = () => {
       <DropdownMenuContent align="end" className="border-argumentum-light bg-white">
         <DropdownMenuLabel className="flex items-center text-argumentum-text">
           <span className="truncate max-w-[180px]">{user?.email}</span>
-          {isAdmin && <Shield className="ml-2 h-4 w-4 text-argumentum-gold flex-shrink-0" />}
+          {user?.isAdmin && <Shield className="ml-2 h-4 w-4 text-argumentum-gold flex-shrink-0" />}
         </DropdownMenuLabel>
         <DropdownMenuSeparator className="bg-argumentum-light" />
-        {isAdmin ? (
+        {user?.isAdmin ? (
             <DropdownMenuItem asChild className="text-argumentum-text hover:bg-argumentum-light hover:text-argumentum-gold">
               <Link to="/admin/admins" className="flex items-center w-full cursor-pointer">
                 <Shield className="mr-2 h-4 w-4" />
@@ -190,7 +139,7 @@ const Header = () => {
       <SheetContent side="left" className="w-[250px] bg-argumentum-dark border-argumentum-light">
         <div className="flex flex-col h-full">
           <div className="py-4">
-            <Link to={user && isAdmin ? "/admin/dashboard" : user ? "/dashboard" : "/"} className="flex items-center space-x-2 text-xl font-serif font-bold text-argumentum-gold" onClick={() => {setMobileMenuOpen(false); handleLogoClick();}}>
+            <Link to={user && user.isAdmin ? "/admin/dashboard" : user ? "/dashboard" : "/"} className="flex items-center space-x-2 text-xl font-serif font-bold text-argumentum-gold" onClick={() => {setMobileMenuOpen(false); handleLogoClick();}}>
               <Feather className="h-5 w-5 text-argumentum-gold animate-feather-float" />
               <span>Argumentum</span>
             </Link>
@@ -224,15 +173,15 @@ const Header = () => {
   );
   
   const renderTokenBalance = () => {
-    if (!user || isAdmin || !teamId) return null; 
+    if (!user || user.isAdmin) return null; 
     return (
-      <Link to={isTeamOwner ? "/tokens/store" : "#"} className={`flex items-center mr-2 md:mr-4 ${isTeamOwner ? 'cursor-pointer' : 'cursor-default'}`}>
+      <Link to="/tokens" className="flex items-center mr-2 md:mr-4 cursor-pointer">
         <Badge variant="outline" className="bg-argumentum-goldLight text-argumentum-dark border-argumentum-gold flex items-center px-2 md:px-3 py-0.5 md:py-1">
           <Coins className="h-3 w-3 md:h-3.5 md:w-3.5 mr-1 md:mr-1.5" />
-          {loadingTokens ? (
+          {loadingUserTokens ? (
             <span className="text-xs">...</span>
           ) : (
-            <span className="text-xs font-medium whitespace-nowrap">{tokenCount ?? 0} Tokens</span>
+            <span className="text-xs font-medium whitespace-nowrap">{userTokens ?? 0} Tokens</span>
           )}
         </Badge>
       </Link>
@@ -240,8 +189,8 @@ const Header = () => {
   };
   
   const tokenContextValue = {
-    tokenCount,
-    loadingTokens,
+    tokenCount: userTokens,
+    loadingTokens: loadingUserTokens,
     refreshTokens
   };
   

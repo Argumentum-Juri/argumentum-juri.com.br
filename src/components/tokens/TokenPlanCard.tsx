@@ -82,18 +82,29 @@ const TokenPlanCard: React.FC<TokenPlanCardProps | TokenPlanCardWithPlanProps> =
 
   // Determinar o texto do botão com base no estado de assinatura
   let buttonText = 'Carregando...';
+  let buttonVariant = 'outline';
+  let buttonDisabled = loading || loadingSubscription;
   
   if (!loadingSubscription) {
     if (loading) {
       buttonText = 'Processando...';
+      buttonDisabled = true;
     } else if (isCurrentPlan) {
       buttonText = 'Plano Atual';
+      buttonVariant = 'default';
+      buttonDisabled = true;
     } else if (hasActiveSubscription) {
-      buttonText = 'Gerenciar Assinatura'; // Novo texto para quando tem assinatura mas não é este plano
+      buttonText = 'Alterar para este Plano';
+      buttonVariant = 'secondary';
+      buttonDisabled = false;
     } else if (billingType === 'annual' || billingType === 'monthly') {
       buttonText = 'Contratar Assinatura';
+      buttonVariant = popular ? 'default' : 'outline';
+      buttonDisabled = false;
     } else {
       buttonText = 'Comprar agora';
+      buttonVariant = 'outline';
+      buttonDisabled = false;
     }
   }
   
@@ -174,9 +185,9 @@ const TokenPlanCard: React.FC<TokenPlanCardProps | TokenPlanCardWithPlanProps> =
       <CardFooter className="pt-3">
         <Button 
           onClick={onClick} 
-          disabled={loading || loadingSubscription || isCurrentPlan}
-          className={`w-full ${isCurrentPlan ? 'bg-green-500 hover:bg-green-600' : hasActiveSubscription ? 'bg-blue-500 hover:bg-blue-600' : ''} whitespace-normal h-auto min-h-10 py-2 px-2 flex items-center justify-center`}
-          variant={popular && !hasActiveSubscription ? "default" : "outline"}
+          disabled={buttonDisabled}
+          className="w-full whitespace-normal h-auto min-h-10 py-2 px-2 flex items-center justify-center"
+          variant={buttonVariant as any}
         >
           {loading || loadingSubscription ? (
             <>

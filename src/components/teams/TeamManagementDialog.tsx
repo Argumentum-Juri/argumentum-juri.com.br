@@ -10,7 +10,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Team, TeamMember, TeamInvite } from '@/services/team/types';
 import { getTeamMembers } from '@/services/team/memberOperations';
-import { useAuth } from '@/contexts/AuthContext';
+import { useGoAuth } from '@/contexts/GoAuthContext';
 import { supabase } from '@/integrations/supabase/client';
 
 import TeamMembersList from './TeamMembersList';
@@ -28,7 +28,7 @@ const TeamManagementDialog: React.FC<TeamManagementDialogProps> = ({
   open, 
   onOpenChange 
 }) => {
-  const { user } = useAuth();
+  const { user } = useGoAuth();
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [invites, setInvites] = useState<TeamInvite[]>([]);
   const [userRole, setUserRole] = useState<string>('member');

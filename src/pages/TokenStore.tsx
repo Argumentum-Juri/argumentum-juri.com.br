@@ -13,16 +13,13 @@ import { useTokenStore } from '@/hooks/useTokenStore';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useAuth } from '@/contexts/AuthContext';
-import { useTeamOwnership } from '@/hooks/useTeamOwnership';
+import { useGoAuth } from '@/contexts/GoAuthContext';
 
 const TokenStore: React.FC = () => {
   const navigate = useNavigate();
-  const { user, teamId } = useAuth();
-  const { isOwner: isTeamOwner } = useTeamOwnership(teamId);
+  const { user, getToken } = useGoAuth();
   
   const {
-    // Use the correct property names based on the returned values from useTokenStore
     teamTokens: currentTokens,
     loadingTeamTokens: loading,
     purchaseLoading,
@@ -41,13 +38,6 @@ const TokenStore: React.FC = () => {
 
   // Filtrar planos baseados no ciclo de cobrança selecionado
   const filteredPlans = SUBSCRIPTION_PLANS.filter(plan => plan.billingType === billingCycle);
-
-  // Verificar se o usuário é o proprietário da equipe
-  useEffect(() => {
-    if (!isTeamOwner && !loading) {
-      navigate('/dashboard');
-    }
-  }, [isTeamOwner, loading, navigate]);
 
   // Verificar status de assinatura ao carregar a página
   useEffect(() => {
@@ -77,10 +67,27 @@ const TokenStore: React.FC = () => {
   }, [currentSubscription]);
 
   const handleSubscription = async (planId: string) => {
-    // Verificar se o usuário já tem uma assinatura
+    // Verificar se o usuário já tem uma assinatura ativa
     if (currentSubscription && currentSubscription.planId) {
-      console.log("Usuário já tem assinatura, redirecionando para o portal de gerenciamento");
-      await handleManageSubscription();
+      // Se é o mesmo plano, direcionar para gerenciar assinatura
+      if (currentSubscription.planId === planId) {
+        await handleManageSubscription();
+        return;
+      }
+      
+      // Se é plano diferente, perguntar sobre mudança
+      const currentPlanName = SUBSCRIPTION_PLANS.find(p => p.id === currentSubscription.planId)?.name || 'Plano Atual';
+      const newPlanName = SUBSCRIPTION_PLANS.find(p => p.id === planId)?.name || 'Novo Plano';
+      
+      const shouldChange = window.confirm(
+        `Você possui o plano "${currentPlanName}" ativo. ` +
+        `Deseja alterar para o plano "${newPlanName}"? ` +
+        "A assinatura anterior será cancelada e você receberá crédito proporcional."
+      );
+      
+      if (shouldChange) {
+        await handleSubscriptionPurchase(planId);
+      }
       return;
     }
     
@@ -91,9 +98,10 @@ const TokenStore: React.FC = () => {
   const handleManageSubscription = async () => {
     try {
       setManageLoading(true);
-      const { data: sessionData } = await supabase.auth.getSession();
       
-      if (!sessionData?.session?.access_token) {
+      const goAuthToken = getToken();
+      
+      if (!goAuthToken) {
         toast.error("Sessão inválida", {
           description: "Por favor, faça login novamente para continuar."
         });
@@ -102,7 +110,7 @@ const TokenStore: React.FC = () => {
       
       const { data, error } = await supabase.functions.invoke("stripe-portal", {
         headers: { 
-          Authorization: `Bearer ${sessionData.session.access_token}`
+          Authorization: `Bearer ${goAuthToken}`
         }
       });
       
@@ -125,15 +133,17 @@ const TokenStore: React.FC = () => {
     }
   };
 
+
   // Verificar se um plano é o plano atual do usuário
   const isCurrentPlan = (planId: string) => {
     return currentSubscription?.planId === planId;
   };
   
-  if (!isTeamOwner) {
-    return null; // Será redirecionado no useEffect
-  }
-  
+  const handleCustomTokenInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = parseInt(e.target.value) || 100;
+    handleCustomTokenChange(value);
+  };
+
   return (
     <div className="py-6">
       <div className="max-w-6xl mx-auto px-4 sm:px-6">
@@ -163,7 +173,16 @@ const TokenStore: React.FC = () => {
         
         <TokenBalanceCard currentTokens={currentTokens} loading={loading} />
         
-        <h2 className="text-xl font-semibold my-6">Assinaturas</h2>
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6">
+          <h2 className="text-xl font-semibold">Assinaturas</h2>
+          {currentSubscription && (
+            <div className="bg-green-50 dark:bg-green-900/20 px-3 py-1 rounded-full border border-green-200 dark:border-green-800">
+              <span className="text-sm text-green-700 dark:text-green-300 font-medium">
+                Assinatura Ativa: {SUBSCRIPTION_PLANS.find(p => p.id === currentSubscription.planId)?.name || currentSubscription.planType}
+              </span>
+            </div>
+          )}
+        </div>
         
         <div className="mb-6 flex justify-center">
           <Tabs 
@@ -209,7 +228,7 @@ const TokenStore: React.FC = () => {
         
         <CustomTokenForm
           customTokens={customTokens}
-          onTokenChange={handleCustomTokenChange}
+          onTokenChange={handleCustomTokenInputChange}
           onPurchase={handleCustomTokenPurchase}
           isLoading={purchaseLoading !== null}
           loadingPlanId={purchaseLoading}

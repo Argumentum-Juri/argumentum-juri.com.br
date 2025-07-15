@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
+import { useGoAuth } from '@/contexts/GoAuthContext';
 import { Loader2 } from 'lucide-react';
 
 interface PrivateRouteProps {
@@ -9,8 +9,15 @@ interface PrivateRouteProps {
 }
 
 const PrivateRoute: React.FC<PrivateRouteProps> = ({ children }) => {
-  const { user, isLoading, authInitialized } = useAuth();
+  const { user, isLoading, authInitialized } = useGoAuth();
   const location = useLocation();
+
+  console.log('[PrivateRoute] Estado atual:', { 
+    hasUser: !!user, 
+    isLoading, 
+    authInitialized,
+    currentPath: location.pathname 
+  });
 
   // Aguardar inicialização da autenticação
   if (!authInitialized || isLoading) {
@@ -31,6 +38,7 @@ const PrivateRoute: React.FC<PrivateRouteProps> = ({ children }) => {
   }
 
   // Usuário autenticado - renderizar conteúdo
+  console.log('[PrivateRoute] ✅ Usuário autenticado, liberando acesso');
   return <>{children}</>;
 };
 

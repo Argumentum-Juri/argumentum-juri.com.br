@@ -9,39 +9,25 @@ import TeamMembersList from '@/components/teams/TeamMembersList';
 import TeamInviteForm from '@/components/teams/TeamInviteForm';
 import MyInvites from '@/components/teams/MyInvites';
 import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/contexts/AuthContext';
+import { useGoAuth } from '@/contexts/GoAuthContext';
 import { toast } from 'sonner';
 
 const TeamPage = () => {
-  const { teamId, teamLoading, user } = useAuth();
+  const { user } = useGoAuth();
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [userRole, setUserRole] = useState<string>("operador");
+  const [teamId, setTeamId] = useState<string | null>(null);
+  const [teamLoading, setTeamLoading] = useState(true);
 
-  // Get user role in current team
+  // Por enquanto, simulamos uma equipe para o usuário
   useEffect(() => {
-    const fetchUserRole = async () => {
-      if (!teamId || !user) return;
-      
-      try {
-        const { data, error } = await supabase
-          .from("team_members")
-          .select("role")
-          .eq("team_id", teamId)
-          .eq("user_id", user.id)
-          .single();
-          
-        if (error) throw error;
-        if (data) {
-          setUserRole(data.role);
-        }
-      } catch (error) {
-        console.error("Error fetching user role:", error);
-        toast.error("Could not verify your team permissions");
-      }
-    };
-    
-    fetchUserRole();
-  }, [teamId, user, refreshTrigger]);
+    if (user) {
+      // Simular busca de equipe - em implementação real, usar API adequada
+      setTeamId('default-team');
+      setUserRole('owner');
+    }
+    setTeamLoading(false);
+  }, [user]);
 
   const handleMemberChange = () => {
     setRefreshTrigger(prev => prev + 1);

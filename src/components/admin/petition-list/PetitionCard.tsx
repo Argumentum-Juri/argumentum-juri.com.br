@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Petition } from '@/types';
@@ -37,7 +38,7 @@ const PetitionCard: React.FC<PetitionCardProps> = ({ petition, onClick }) => {
         </div> 
 
         <div className="text-xs text-muted-foreground self-end">
-           {formatDate(petition.createdAt)}
+           {formatDate(petition.created_at)}
         </div>
       </CardContent>
     </Card>

@@ -34,8 +34,8 @@ export const SUBSCRIPTION_PLANS: TokenPlan[] = [
     id: 'essential-annual',
     name: 'Essencial Anual',
     tokens: 48 * 12, // 576 tokens anuais
-    priceInCents: 541440, // R$5.760,00 com 6% de desconto (já aplicado)
-    discount: 6,
+    priceInCents: 518400, // R$5.184,00 com 10% de desconto (R$480 × 12 × 0.9)
+    discount: 10,
     description: 'Plano ideal para advogados autônomos e pequenos escritórios',
     billingType: 'annual',
     priceId: 'price_1RKTGSR5X4PxrShi5pNwghGv',
@@ -59,8 +59,8 @@ export const SUBSCRIPTION_PLANS: TokenPlan[] = [
     id: 'advanced-annual',
     name: 'Avançado Anual',
     tokens: 96 * 12, // 1152 tokens anuais
-    priceInCents: 861120, // R$9.360,00 com 8% de desconto (já aplicado)
-    discount: 8,
+    priceInCents: 842400, // R$8.424,00 com 10% de desconto (R$780 × 12 × 0.9)
+    discount: 10,
     description: 'Nosso plano mais popular para escritórios de médio porte',
     billingType: 'annual',
     priceId: 'price_1RKTJFR5X4PxrShibGQspEse',
@@ -83,7 +83,7 @@ export const SUBSCRIPTION_PLANS: TokenPlan[] = [
     id: 'elite-annual',
     name: 'Elite Anual',
     tokens: 160 * 12, // 1920 tokens anuais
-    priceInCents: 1080000, // R$12.000,00 com 10% de desconto (já aplicado)
+    priceInCents: 1080000, // R$10.800,00 com 10% de desconto (R$1.000 × 12 × 0.9)
     discount: 10,
     description: 'Para escritórios com alta demanda de petições jurídicas',
     billingType: 'annual',
@@ -130,7 +130,7 @@ export const calculateDiscount = (tokens: number): number => {
 };
 
 // Função para calcular preço com desconto
-// Valor fixo de R$10 por token
+// Valor fixo de R$10,00 por token (baseado no preço definido pelo usuário)
 export const calculatePrice = (tokens: number): number => {
   const basePrice = tokens * 1000; // R$10,00 por token (em centavos)
   const discount = calculateDiscount(tokens);

@@ -56,7 +56,7 @@ const PetitionCard: React.FC<PetitionCardProps> = ({ petition }) => {
               )}
             </div>
             <div className="text-xs text-muted-foreground mt-1">
-              Criada em: {formatDate(petition.createdAt)}
+              Criada em: {formatDate(petition.created_at)}
             </div>
           </div>
           <StatusBadge status={petition.status as PetitionStatus} />

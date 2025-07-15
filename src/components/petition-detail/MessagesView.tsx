@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -5,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Send, MessageCircle, User, Loader2 } from "lucide-react";
-import { useAuth } from "@/contexts/AuthContext";
+import { useGoAuth } from "@/contexts/GoAuthContext";
 import { formatDate } from "@/utils/formatDate";
 import { toast } from "sonner";
 import { petitionService } from "@/services";
@@ -15,11 +16,11 @@ import { cn } from "@/lib/utils";
 
 interface MessagesViewProps {
   petitionId: string;
-  isAdmin?: boolean; // Added isAdmin prop
+  isAdmin?: boolean;
 }
 
 const MessagesView: React.FC<MessagesViewProps> = ({ petitionId, isAdmin = false }) => {
-  const { user } = useAuth();
+  const { user } = useGoAuth();
   const [messages, setMessages] = useState<PetitionComment[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -108,9 +109,9 @@ const MessagesView: React.FC<MessagesViewProps> = ({ petitionId, isAdmin = false
         petition_id: petitionId,
         author: {
             id: user.id,
-            name: user.user_metadata?.name || user.email || "Você",
+            name: user.name || user.email || "Você",
             email: user.email || "",
-            avatar_url: user.user_metadata?.avatar_url || undefined,
+            avatar_url: undefined,
         }
     };
 

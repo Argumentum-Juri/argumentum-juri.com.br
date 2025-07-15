@@ -1,9 +1,8 @@
 import { supabase } from "@/integrations/supabase/client";
 import { PetitionSettings } from "@/types"; 
 import { toast } from 'sonner';
-import { r2Storage } from "@/services/storage/r2Storage";
 
-const STORAGE_PROVIDER_R2 = 'r2';
+const STORAGE_PROVIDER_SUPABASE = 'supabase';
 
 // Interface para o tipo de dados retornado da tabela do Supabase
 interface PetitionSettingsDB {
@@ -268,15 +267,26 @@ export const petitionSettings = {
       const fileExt = originalFilename.split('.').pop() || 'bin';
       const r2Key = `user_settings/${userId}/${fileType}/${Date.now()}.${fileExt}`;
 
-      console.log(`[uploadFile Settings] Chamando r2Storage.uploadFile para key: ${r2Key}`);
-      const uploadResult = await r2Storage.uploadFile(r2Key, file);
+      console.log(`[uploadFile Settings] Fazendo upload para Supabase Storage: ${r2Key}`);
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('petition-assets')
+        .upload(r2Key, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
 
-      if (!uploadResult.success || !uploadResult.key) {
-        throw new Error(uploadResult.error || `Erro ao fazer upload para R2: ${fileType}`);
+      if (uploadError) {
+        console.error(`[uploadFile Settings] Erro no upload Supabase para ${fileType}:`, uploadError);
+        toast.error(`Erro ao fazer upload: ${uploadError.message}`);
+        return null;
       }
 
-      const returnedKey = uploadResult.key;
-      const publicUrl = uploadResult.url;
+      const { data: publicUrlData } = supabase.storage
+        .from('petition-assets')
+        .getPublicUrl(uploadData.path);
+
+      const returnedKey = uploadData.path;
+      const publicUrl = publicUrlData.publicUrl;
       console.log('[uploadFile Settings] Upload R2 OK. Key:', returnedKey, 'URL:', publicUrl);
 
       // Determina quais colunas do DB atualizar - usa um objeto tipado
@@ -288,17 +298,17 @@ export const petitionSettings = {
       if (fileType === 'logo') {
         dbUpdateData.logo_url = publicUrl;
         dbUpdateData.logo_r2_key = returnedKey;
-        dbUpdateData.logo_storage_provider = STORAGE_PROVIDER_R2;
+        dbUpdateData.logo_storage_provider = STORAGE_PROVIDER_SUPABASE;
         dbUpdateData.logo_original_filename = originalFilename; // Salvar nome original
       } else if (fileType === 'letterhead_template') {
         dbUpdateData.letterhead_template_url = publicUrl;
         dbUpdateData.letterhead_template_r2_key = returnedKey;
-        dbUpdateData.letterhead_template_storage_provider = STORAGE_PROVIDER_R2;
+        dbUpdateData.letterhead_template_storage_provider = STORAGE_PROVIDER_SUPABASE;
         dbUpdateData.letterhead_template_original_filename = originalFilename; // Salvar nome original
       } else if (fileType === 'petition_template') {
         dbUpdateData.petition_template_url = publicUrl;
         dbUpdateData.petition_template_r2_key = returnedKey;
-        dbUpdateData.petition_template_storage_provider = STORAGE_PROVIDER_R2;
+        dbUpdateData.petition_template_storage_provider = STORAGE_PROVIDER_SUPABASE;
         dbUpdateData.petition_template_original_filename = originalFilename; // Salvar nome original
       }
 
@@ -333,7 +343,7 @@ export const petitionSettings = {
       if (error) {
         console.error('[uploadFile Settings] Erro ao atualizar metadados no DB:', error);
         console.warn(`[uploadFile Settings] Tentando reverter upload R2 para key: ${returnedKey}`);
-        await r2Storage.deleteFile(returnedKey).catch(delErr => console.error("Falha ao reverter upload R2:", delErr));
+        await supabase.storage.from('petition-assets').remove([returnedKey]).catch(delErr => console.error("Falha ao reverter upload:", delErr));
         throw new Error(`Erro ao salvar referência do arquivo no banco: ${error.message}`);
       }
 
@@ -357,7 +367,8 @@ export const petitionSettings = {
     }
 
     try {
-        const success = await r2Storage.deleteFile(r2Key);
+        const { error: storageError } = await supabase.storage.from('petition-assets').remove([r2Key]);
+        const success = !storageError;
         if (!success) {
             return false;
         }

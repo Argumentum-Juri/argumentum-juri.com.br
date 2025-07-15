@@ -9,11 +9,17 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Separator } from "@/components/ui/separator";
 import { UploadCloud, User } from 'lucide-react';
 import { ProfileData } from '@/types/profile';
-import { User as AuthUser } from '@supabase/supabase-js';
+
+interface User {
+  id: string;
+  email: string;
+  name: string;
+  isAdmin: boolean;
+}
 
 interface PersonalInfoTabProps {
   profileData: ProfileData;
-  user: AuthUser | null;
+  user: User | null;
   isSubmitting: boolean;
   handleInputChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
   handlePersonTypeChange: (value: 'fisica' | 'juridica') => void;
@@ -44,7 +50,7 @@ const PersonalInfoTab: React.FC<PersonalInfoTabProps> = ({
           </div>
           
           <div className="flex-1 text-center md:text-left">
-            <h3 className="font-medium">{profileData.name || user?.email}</h3>
+            <h3 className="font-medium">{profileData.name || user?.name || user?.email}</h3>
             <p className="text-sm text-muted-foreground">{user?.email}</p>
             
             <div className="mt-4">

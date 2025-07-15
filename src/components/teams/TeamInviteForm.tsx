@@ -14,7 +14,7 @@ import {
 import { inviteToTeam } from "@/services/team";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/contexts/AuthContext';
+import { useGoAuth } from '@/contexts/GoAuthContext';
 
 interface TeamInviteFormProps {
   teamId: string;
@@ -23,7 +23,7 @@ interface TeamInviteFormProps {
 }
 
 const TeamInviteForm: React.FC<TeamInviteFormProps> = ({ teamId, onInviteSent, userRole = "owner" }) => {
-  const { user } = useAuth();
+  const { user } = useGoAuth();
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("operador");
   const [isLoading, setIsLoading] = useState(false);

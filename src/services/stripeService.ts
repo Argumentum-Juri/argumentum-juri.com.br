@@ -1,11 +1,12 @@
 
 import { supabase } from "@/integrations/supabase/client";
+import { getGoAuthToken } from "@/contexts/GoAuthContext";
 
 class StripeService {
   async createTokenCheckoutSession(tokens: number, amount: number, planName: string): Promise<string | null> {
     try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      if (!sessionData.session) {
+      const token = getGoAuthToken();
+      if (!token) {
         throw new Error('Usuário não autenticado');
       }
 
@@ -13,11 +14,10 @@ class StripeService {
         body: {
           tokens,
           amount,
-          planName,
-          userId: sessionData.session.user.id
+          planName
         },
         headers: {
-          Authorization: `Bearer ${sessionData.session.access_token}`
+          Authorization: `Bearer ${token}`
         }
       });
 
@@ -39,24 +39,23 @@ class StripeService {
 
   async createCustomTokenCheckout(tokens: number): Promise<string | null> {
     try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      if (!sessionData.session) {
+      const token = getGoAuthToken();
+      if (!token) {
         throw new Error('Usuário não autenticado');
       }
 
       // Calcular o preço usando a função importada do arquivo tokenPlans
-      // Usamos o valor diretamente (10 reais por token com desconto aplicado)
-      const basePrice = tokens * 10; // R$10 por token
+      // Usar o valor correto de R$10,00 por token
+      const basePrice = tokens * 1000; // R$10,00 por token em centavos
 
       const { data, error } = await supabase.functions.invoke('token-checkout', {
         body: {
           custom: true,
           tokens,
-          amount: basePrice / 100, // Convertendo de centavos para reais para o backend
-          userId: sessionData.session.user.id
+          amount: basePrice / 100 // Convertendo de centavos para reais para o backend
         },
         headers: {
-          Authorization: `Bearer ${sessionData.session.access_token}`
+          Authorization: `Bearer ${token}`
         }
       });
 
@@ -78,8 +77,8 @@ class StripeService {
 
   async createSubscriptionCheckoutSession(priceId: string, planName: string, billingType: 'monthly' | 'annual'): Promise<string | null> {
     try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      if (!sessionData.session) {
+      const token = getGoAuthToken();
+      if (!token) {
         throw new Error('Usuário não autenticado');
       }
 
@@ -87,11 +86,10 @@ class StripeService {
         body: {
           priceId,
           planName,
-          billingType,
-          userId: sessionData.session.user.id
+          billingType
         },
         headers: {
-          Authorization: `Bearer ${sessionData.session.access_token}`
+          Authorization: `Bearer ${token}`
         }
       });
 
@@ -113,14 +111,14 @@ class StripeService {
 
   async redirectToStripePortal(): Promise<string | null> {
     try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      if (!sessionData.session) {
+      const token = getGoAuthToken();
+      if (!token) {
         throw new Error('Usuário não autenticado');
       }
 
       const { data, error } = await supabase.functions.invoke('stripe-portal', {
         headers: {
-          Authorization: `Bearer ${sessionData.session.access_token}`
+          Authorization: `Bearer ${token}`
         }
       });
 

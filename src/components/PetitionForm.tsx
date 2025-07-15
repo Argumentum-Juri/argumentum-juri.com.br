@@ -1,5 +1,4 @@
 
-// src/components/PetitionForm.tsx
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { yupResolver } from '@hookform/resolvers/yup';
@@ -14,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import FileUpload from '@/components/FileUpload';
-import { useAuth } from '@/contexts/AuthContext';
+import { useGoAuth } from '@/contexts/GoAuthContext';
 import { useTokenBalance } from '@/components/Header';
 import { useForm, Controller } from 'react-hook-form';
 import { PetitionStatus } from '@/types/enums';
@@ -50,7 +49,10 @@ type PetitionInsertServiceData = Omit<
 >;
 
 const PetitionForm = () => {
-  const { user, teamId: defaultUserTeamId, teamLoading } = useAuth(); 
+  const { user } = useGoAuth(); 
+  // For now, let's use a hardcoded team ID - this should come from context/API
+  const defaultUserTeamId = "4decbcea-7b73-48b1-941c-cb93b74879c0"; // This should be dynamic
+  const teamLoading = false;
   const { refreshTokens: refreshTeamTokensInHeader } = useTokenBalance(); 
   const navigate = useNavigate();
 
@@ -74,7 +76,8 @@ const PetitionForm = () => {
 
   const onSubmit = async (formData: PetitionFormData) => {
     if (!user?.id || !defaultUserTeamId) {
-      // Toasts já tratados nas verificações anteriores ou no início da função
+      console.error('[PetitionForm] Usuário ou equipe não definidos:', { userId: user?.id, teamId: defaultUserTeamId });
+      toast.error('Erro de autenticação', { description: 'Usuário ou equipe não identificados.' });
       return;
     }
 
@@ -117,7 +120,7 @@ const PetitionForm = () => {
 
       const petitionInputForService: CreatePetitionParams = {
         title: String(formData.title || "Petição Sem Título"),
-        description: String(formData.description || ""),
+        description: String(formData.description || ""), 
         legal_area: String(formData.legal_area || ""), 
         petition_type: String(formData.petition_type || ""), 
         has_process: Boolean(formData.has_process || false),
@@ -132,36 +135,95 @@ const PetitionForm = () => {
       };
       
       console.log("Enviando para createPetition:", petitionInputForService, "Usuário:", user.id, "Equipe Padrão:", defaultUserTeamId);
-      // Update to call createPetition with just the petition data
-      // The function will get userId from auth context internally
-      const newPetition = await petitionService.createPetition(petitionInputForService);
+      
+      // Criar a petição - agora passando o userId explicitamente
+      const newPetition = await petitionService.createPetition(petitionInputForService, user.id);
       
       if (newPetition && newPetition.id) {
-        const filesToUpload = formData.attachments;
-        if (filesToUpload && filesToUpload.length > 0 && petitionService.petitionAttachments) {
-          toast.info("Enviando anexos...", { id: "attachment-upload-petitionform" });
-          const uploadPromises = filesToUpload.map((file: File) =>  
-            petitionService.petitionAttachments.uploadAttachment(newPetition.id as string, file)
-             .catch(err => ({ success: false, error: err, fileName: file.name }))
-          );
-          
-          const results = await Promise.allSettled(uploadPromises);
-          results.forEach(result => {
-            if (result.status === 'fulfilled' && result.value && !result.value.success) {
-              toast.error(`Falha ao enviar anexo: ${(result.value as any).fileName || 'arquivo'}.`, { description: (result.value as any).error?.message });
-            } else if (result.status === 'rejected') {
-              toast.error(`Erro crítico ao enviar um anexo.`);
-            }
-          });
-          toast.dismiss("attachment-upload-petitionform");
+        console.log(`[PetitionForm] Petição criada com sucesso: ${newPetition.id}`);
+        
+        // Atualizar tokens imediatamente após criar a petição
+        try {
+          await refreshTeamTokensInHeader(true);
+        } catch (tokenError) {
+          console.warn('[PetitionForm] Erro ao atualizar tokens:', tokenError);
+          // Não impede o fluxo principal
         }
         
-        // Fix: Passar o argumento 'force' como true para forçar atualização
-        await refreshTeamTokensInHeader(true); 
-        navigate(`/petitions/${newPetition.id}`);
+        // Processar anexos se houver (mas não bloquear redirecionamento se falharem)
+        const filesToUpload = formData.attachments;
+        if (filesToUpload && filesToUpload.length > 0 && petitionService.petitionAttachments) {
+          console.log(`[PetitionForm] Processando ${filesToUpload.length} anexos...`);
+          toast.info("Processando anexos...", { id: "attachment-upload-petitionform" });
+          
+          try {
+            const uploadPromises = filesToUpload.map(async (file: File) => {
+              try {
+                const result = await petitionService.petitionAttachments.uploadAttachment(newPetition.id as string, file);
+                if (!result.success) {
+                  console.error(`[PetitionForm] Falha no upload de ${file.name}:`, result.error);
+                  return { success: false, error: result.error, fileName: file.name };
+                }
+                return { success: true, fileName: file.name };
+              } catch (err) {
+                console.error(`[PetitionForm] Erro no upload de ${file.name}:`, err);
+                return { success: false, error: err, fileName: file.name };
+              }
+            });
+            
+            const results = await Promise.allSettled(uploadPromises);
+            let successCount = 0;
+            let errorCount = 0;
+            
+            results.forEach((result, index) => {
+              if (result.status === 'fulfilled') {
+                if (result.value && result.value.success) {
+                  successCount++;
+                } else {
+                  errorCount++;
+                  const fileName = result.value?.fileName || `arquivo ${index + 1}`;
+                  const errorMsg = result.value?.error || 'Erro desconhecido';
+                  console.error(`[PetitionForm] Upload falhou para ${fileName}:`, errorMsg);
+                  toast.error(`Falha no upload: ${fileName}`, { 
+                    description: typeof errorMsg === 'string' ? errorMsg : 'Erro durante upload'
+                  });
+                }
+              } else {
+                errorCount++;
+                console.error(`[PetitionForm] Upload rejeitado:`, result.reason);
+                toast.error(`Erro crítico ao enviar anexo ${index + 1}`);
+              }
+            });
+            
+            toast.dismiss("attachment-upload-petitionform");
+            
+            if (successCount > 0) {
+              toast.success(`${successCount} anexo(s) enviado(s) com sucesso!`);
+            }
+            
+            if (errorCount > 0) {
+              toast.warning(`${errorCount} anexo(s) falharam no upload, mas a petição foi criada.`);
+            }
+            
+          } catch (uploadError) {
+            console.error('[PetitionForm] Erro geral no upload de anexos:', uploadError);
+            toast.dismiss("attachment-upload-petitionform");
+            toast.warning('Erro no upload de anexos, mas a petição foi criada com sucesso.');
+          }
+        }
+        
+        // 🔧 CORREÇÃO: Adicionar delay antes do redirecionamento para sincronização
+        console.log(`[PetitionForm] Aguardando 1 segundo para sincronização antes do redirecionamento...`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        console.log(`[PetitionForm] Redirecionando para: /petition/${newPetition.id}`);
+        toast.success('Petição criada com sucesso!');
+        navigate(`/petition/${newPetition.id}?fromCreate=true`);
+      } else {
+        throw new Error('Dados da petição não foram retornados corretamente');
       }
     } catch (error: any) {
-      console.error('Erro ao submeter formulário de petição:', error);
+      console.error('[PetitionForm] Erro ao submeter formulário de petição:', error);
       if (error.message && 
           !error.message.toLowerCase().includes("saldo") && 
           !error.message.toLowerCase().includes("cobrança") &&

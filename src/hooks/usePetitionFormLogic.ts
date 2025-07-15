@@ -1,11 +1,10 @@
-
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Question } from '@/types/petition-form';
 import { DocumentInfo } from '@/types/documentInfo';
 import { petitionService } from '@/services/petition';
-import { useAuth } from '@/contexts/AuthContext';
+import { useGoAuth } from '@/contexts/GoAuthContext';
 import { ProcessPart } from '@/types/petition-form';
 
 const FORM_STORAGE_KEY = "chatPetitionForm_answers";
@@ -13,7 +12,7 @@ const FILES_STORAGE_KEY = "chatPetitionForm_files";
 
 export const useChatPetitionFormLogic = (questions: Question[], teamId: string) => {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user } = useGoAuth();
   
   // Initialize answers with localStorage data
   const [answers, setAnswers] = useState<Record<string, any>>(() => {

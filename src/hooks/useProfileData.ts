@@ -1,12 +1,15 @@
 
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/contexts/AuthContext';
-import { toast } from "sonner";
+import { useGoAuth } from '@/contexts/GoAuthContext';
+import { useProfile } from '@/hooks/useProfile';
 import { ProfileData, Profile } from '@/types/profile';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 export const useProfileData = () => {
-  const { user } = useAuth();
+  const { user } = useGoAuth();
+  const { profile, updateProfile } = useProfile();
+  
   const [activeTab, setActiveTab] = useState('personal');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [profileData, setProfileData] = useState<ProfileData>({
@@ -25,56 +28,39 @@ export const useProfileData = () => {
     purchase_reason: '',
     delegation_intent: '',
     choice_reason: '',
-    social_media: ''
+    social_media: '',
+    terms_accepted: false,
   });
+  
+  // Estados para alteração de senha
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
+  // Atualizar dados do perfil quando carregados
   useEffect(() => {
-    if (user) {
-      // Buscar os dados do perfil do usuário
-      const fetchProfile = async () => {
-        try {
-          const { data, error } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', user.id)
-            .single();
-
-          if (error) {
-            console.error('Erro ao buscar dados do perfil:', error);
-            return;
-          }
-
-          if (data) {
-            setProfileData({
-              name: data.name || '',
-              phone: data.phone || '',
-              oab_number: data.oab_number || '',
-              person_type: (data.person_type as 'fisica' | 'juridica') || 'fisica',
-              document: data.document || '',
-              address: data.address || '',
-              city: data.city || '',
-              state: data.state || '',
-              zip_code: data.zip_code || '',
-              office_areas: data.office_areas || '',
-              delegation_areas: data.delegation_areas || '',
-              team_size: data.team_size || '',
-              purchase_reason: data.purchase_reason || '',
-              delegation_intent: data.delegation_intent || '',
-              choice_reason: data.choice_reason || '',
-              social_media: data.social_media || ''
-            });
-          }
-        } catch (error) {
-          console.error('Erro ao buscar perfil:', error);
-        }
-      };
-
-      fetchProfile();
+    if (profile) {
+      setProfileData({
+        name: profile.name || '',
+        phone: profile.phone || '',
+        oab_number: profile.oab_number || '',
+        person_type: profile.person_type || 'fisica',
+        document: profile.document || '',
+        address: profile.address || '',
+        city: profile.city || '',
+        state: profile.state || '',
+        zip_code: profile.zip_code || '',
+        office_areas: profile.office_areas || '',
+        delegation_areas: profile.delegation_areas || '',
+        team_size: profile.team_size || '',
+        purchase_reason: profile.purchase_reason || '',
+        delegation_intent: profile.delegation_intent || '',
+        choice_reason: profile.choice_reason || '',
+        social_media: profile.social_media || '',
+        terms_accepted: profile.terms_accepted || false,
+      });
     }
-  }, [user]);
+  }, [profile]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -84,83 +70,65 @@ export const useProfileData = () => {
     }));
   };
 
-  const handleSelectChange = (name: string, value: string) => {
+  const handleSelectChange = (field: keyof ProfileData, value: string) => {
     setProfileData(prev => ({
       ...prev,
-      [name]: value
+      [field]: value
     }));
   };
 
   const handlePersonTypeChange = (value: 'fisica' | 'juridica') => {
     setProfileData(prev => ({
       ...prev,
-      person_type: value,
-      document: '' // Limpar o documento ao mudar o tipo
+      person_type: value
     }));
   };
 
-  const handleUpdateProfile = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
+  const handleUpdateProfile = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!user?.id) return;
     
+    setIsSubmitting(true);
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({
-          name: profileData.name,
-          phone: profileData.phone,
-          oab_number: profileData.oab_number,
-          person_type: profileData.person_type,
-          document: profileData.document,
-          address: profileData.address,
-          city: profileData.city,
-          state: profileData.state,
-          zip_code: profileData.zip_code,
-          office_areas: profileData.office_areas,
-          delegation_areas: profileData.delegation_areas,
-          team_size: profileData.team_size,
-          purchase_reason: profileData.purchase_reason,
-          delegation_intent: profileData.delegation_intent,
-          choice_reason: profileData.choice_reason,
-          social_media: profileData.social_media
-        })
-        .eq('id', user?.id);
-
-      if (error) throw error;
-      
-      toast.success('Perfil atualizado com sucesso!');
+      await updateProfile(profileData);
     } catch (error) {
       console.error('Erro ao atualizar perfil:', error);
-      toast.error('Erro ao atualizar perfil. Tente novamente.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleUpdatePassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (newPassword !== confirmPassword) {
-      toast.error('As senhas não coincidem.');
+  const handleUpdatePassword = async () => {
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      toast.error('Preencha todos os campos de senha');
       return;
     }
-    
+
+    if (newPassword !== confirmPassword) {
+      toast.error('A confirmação da senha não confere');
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      toast.error('A nova senha deve ter pelo menos 6 caracteres');
+      return;
+    }
+
     setIsSubmitting(true);
-    
     try {
       const { error } = await supabase.auth.updateUser({
         password: newPassword
       });
 
       if (error) throw error;
-      
-      toast.success('Senha atualizada com sucesso!');
+
+      toast.success('Senha atualizada com sucesso');
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao atualizar senha:', error);
-      toast.error('Erro ao atualizar senha. Verifique se a senha atual está correta.');
+      toast.error(`Erro ao atualizar senha: ${error.message}`);
     } finally {
       setIsSubmitting(false);
     }

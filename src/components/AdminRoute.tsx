@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
+import { useGoAuth } from '@/contexts/GoAuthContext';
 import { Loader2 } from 'lucide-react';
 
 interface AdminRouteProps {
@@ -9,7 +9,7 @@ interface AdminRouteProps {
 }
 
 const AdminRoute: React.FC<AdminRouteProps> = ({ children }) => {
-  const { user, isAdmin, isLoading, authInitialized } = useAuth();
+  const { user, isLoading, authInitialized } = useGoAuth();
   const location = useLocation();
 
   // Aguardando autenticação
@@ -30,7 +30,7 @@ const AdminRoute: React.FC<AdminRouteProps> = ({ children }) => {
   }
 
   // Redirecionar se não for admin
-  if (!isAdmin) {
+  if (!user.isAdmin) {
     return <Navigate to="/dashboard" state={{ from: location }} replace />;
   }
 

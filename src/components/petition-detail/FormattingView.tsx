@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -71,75 +70,207 @@ const FormattingView: React.FC<FormattingViewProps> = ({ petitionId, userId, set
     return option ? option.label : value;
   };
 
+  // Função para verificar se arquivo existe
+  const hasFile = (type: string): boolean => {
+    if (type === 'logo') {
+      return !!(settings.logo_r2_key || settings.logo_url);
+    } else if (type === 'letterhead') {
+      return !!(settings.letterhead_template_r2_key || settings.letterhead_template_url);
+    } else if (type === 'template') {
+      return !!(settings.petition_template_r2_key || settings.petition_template_url);
+    }
+    return false;
+  };
+
   // Função para obter o nome do arquivo
   const getFileName = (type: string): string => {
-    if (type === 'letterhead') {
+    if (type === 'logo') {
+      // Usar o nome original do arquivo, se disponível
+      if (settings.logo_original_filename) {
+        return settings.logo_original_filename;
+      }
+      
+      // Se tiver r2_key, extrair dele
+      if (settings.logo_r2_key) {
+        const fileName = settings.logo_r2_key.split('/').pop() || 'Logo';
+        return fileName;
+      }
+      
+      // Se tiver URL do Supabase Storage, extrair dela
+      if (settings.logo_url) {
+        const urlParts = settings.logo_url.split('/');
+        const fileName = urlParts[urlParts.length - 1] || 'Logo';
+        return decodeURIComponent(fileName);
+      }
+      
+      return 'Logo';
+    } else if (type === 'letterhead') {
       // Usar o nome original do arquivo, se disponível
       if (settings.letterhead_template_original_filename) {
         return settings.letterhead_template_original_filename;
       }
       
-      // Caso contrário, extrair do r2Key
-      const r2Key = settings.letterhead_r2_key;
-      if (!r2Key) return 'Timbrado';
+      // Se tiver r2_key, extrair dele
+      if (settings.letterhead_template_r2_key) {
+        const fileName = settings.letterhead_template_r2_key.split('/').pop() || 'Timbrado';
+        return fileName;
+      }
       
-      const fileName = r2Key.split('/').pop() || 'Timbrado';
-      return fileName;
+      // Se tiver URL do Supabase Storage, extrair dela
+      if (settings.letterhead_template_url) {
+        const urlParts = settings.letterhead_template_url.split('/');
+        const fileName = urlParts[urlParts.length - 1] || 'Timbrado';
+        return decodeURIComponent(fileName);
+      }
+      
+      return 'Timbrado';
     } else if (type === 'template') {
       // Usar o nome original do arquivo, se disponível
       if (settings.petition_template_original_filename) {
         return settings.petition_template_original_filename;
       }
       
-      // Caso contrário, extrair do r2Key
-      const r2Key = settings.template_r2_key;
-      if (!r2Key) return 'Modelo';
+      // Se tiver r2_key, extrair dele
+      if (settings.petition_template_r2_key) {
+        const fileName = settings.petition_template_r2_key.split('/').pop() || 'Modelo';
+        return fileName;
+      }
       
-      const fileName = r2Key.split('/').pop() || 'Modelo';
-      return fileName;
+      // Se tiver URL do Supabase Storage, extrair dela
+      if (settings.petition_template_url) {
+        const urlParts = settings.petition_template_url.split('/');
+        const fileName = urlParts[urlParts.length - 1] || 'Modelo';
+        return decodeURIComponent(fileName);
+      }
+      
+      return 'Modelo';
     }
     
-    return type === 'letterhead' ? 'Timbrado' : 'Modelo';
+    return type === 'logo' ? 'Logo' : type === 'letterhead' ? 'Timbrado' : 'Modelo';
   };
 
-  const handleDownload = async (type: string, key: string | undefined) => {
-    if (!key) {
-      toast.error(`${type === 'template' ? 'Modelo' : 'Timbrado'} não disponível para download`);
+  // Função auxiliar para forçar download com fetch e blob
+  const forceDownload = async (url: string, filename: string) => {
+    try {
+      console.log(`Fazendo fetch do arquivo: ${url}`);
+      
+      // Fazer fetch do arquivo
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        throw new Error(`Erro HTTP: ${response.status}`);
+      }
+      
+      // Converter para blob
+      const blob = await response.blob();
+      
+      // Criar URL temporária do blob
+      const blobUrl = window.URL.createObjectURL(blob);
+      
+      // Criar link temporário e forçar download
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = filename;
+      link.style.display = 'none';
+      
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      // Limpar URL temporária após um pequeno delay
+      setTimeout(() => {
+        window.URL.revokeObjectURL(blobUrl);
+      }, 1000);
+      
+      console.log(`Download iniciado para: ${filename}`);
+    } catch (error) {
+      console.error('Erro ao fazer download via fetch:', error);
+      // Fallback para método anterior
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
+
+  const handleDownload = async (type: string, keyOrUrl: string | undefined) => {
+    // Determinar qual arquivo usar baseado na prioridade: r2_key > URL
+    let r2Key: string | undefined;
+    let fallbackUrl: string | undefined;
+    
+    if (type === 'logo') {
+      r2Key = settings.logo_r2_key;
+      fallbackUrl = settings.logo_url;
+    } else if (type === 'letterhead') {
+      r2Key = settings.letterhead_template_r2_key;
+      fallbackUrl = settings.letterhead_template_url;
+    } else if (type === 'template') {
+      r2Key = settings.petition_template_r2_key;
+      fallbackUrl = settings.petition_template_url;
+    }
+
+    console.log(`[Download ${type}] r2_key:`, r2Key, 'fallbackUrl:', fallbackUrl);
+
+    // Se não há nem r2_key nem URL, abortar
+    if (!r2Key && !fallbackUrl) {
+      let fileType = 'Arquivo';
+      if (type === 'logo') fileType = 'Logo';
+      else if (type === 'letterhead') fileType = 'Timbrado';
+      else if (type === 'template') fileType = 'Modelo';
+      
+      toast.error(`${fileType} não disponível para download`);
       return;
     }
     
     setDownloading(type);
     
     try {
-      console.log(`Chamando Edge Function 'r2-get-signed-url' para key: ${key}`);
-      
-      // Nome de arquivo para download
       const filename = getFileName(type);
       
-      // Chama a Edge Function
-      const { data, error } = await supabase.functions.invoke(
-        'r2-get-signed-url',
-        {
-          body: {
-            key: key,
-            filename: filename
+      // PRIORIDADE 1: Usar r2_key se disponível (via Edge Function)
+      if (r2Key) {
+        console.log(`[Download ${type}] Usando r2_key via Edge Function: ${r2Key}`);
+        
+        const { data, error } = await supabase.functions.invoke(
+          'r2-get-signed-url',
+          {
+            body: {
+              key: r2Key,
+              filename: filename
+            }
           }
+        );
+
+        if (error) {
+          console.error(`[Download ${type}] Erro na Edge Function:`, error);
+          throw new Error(`Erro ao chamar função: ${error.message}`);
         }
-      );
 
-      if (error) {
-        console.error("Erro ao chamar função r2-get-signed-url:", error);
-        throw new Error(`Erro ao chamar função: ${error.message}`);
-      }
-
-      // Verifica a resposta da função
-      if (data && data.success && data.signedUrl) {
-        console.log("URL Assinada recebida, iniciando download:", data.signedUrl);
-        // Redireciona para a URL assinada
-        window.location.href = data.signedUrl;
-      } else {
-        console.error("Resposta inesperada da edge function:", data);
-        throw new Error(data?.error || "Falha ao obter URL de download segura do servidor.");
+        if (data && data.success && data.signedUrl) {
+          console.log(`[Download ${type}] URL assinada recebida:`, data.signedUrl);
+          await forceDownload(data.signedUrl, filename);
+          return;
+        } else {
+          console.error(`[Download ${type}] Resposta inesperada da Edge Function:`, data);
+          
+          // Se Edge Function falhar, tentar fallback
+          if (fallbackUrl) {
+            console.log(`[Download ${type}] Fallback para URL direta:`, fallbackUrl);
+            await forceDownload(fallbackUrl, filename);
+            return;
+          }
+          
+          throw new Error(data?.error || "Falha ao obter URL de download segura do servidor.");
+        }
+      } 
+      // PRIORIDADE 2: Usar URL direta se r2_key não disponível
+      else if (fallbackUrl) {
+        console.log(`[Download ${type}] Usando URL direta (sem r2_key):`, fallbackUrl);
+        await forceDownload(fallbackUrl, filename);
+        return;
       }
 
     } catch (err) {
@@ -180,7 +311,7 @@ const FormattingView: React.FC<FormattingViewProps> = ({ petitionId, userId, set
         <Tabs defaultValue="preview" value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="mb-4">
             <TabsTrigger value="preview">Fonte & Formatação</TabsTrigger>
-            <TabsTrigger value="templates">Timbrado & Modelos</TabsTrigger>
+            <TabsTrigger value="templates">Logo, Timbrado & Modelos</TabsTrigger>
           </TabsList>
           
           <TabsContent value="preview">
@@ -240,7 +371,48 @@ const FormattingView: React.FC<FormattingViewProps> = ({ petitionId, userId, set
           
           <TabsContent value="templates">
             <div className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base">Logo</CardTitle>
+                    <CardDescription>Logo personalizado do escritório</CardDescription>
+                  </CardHeader>
+                  <CardContent className="pb-2">
+                    <div className="flex items-center justify-center h-24 bg-muted/40 rounded-md">
+                      {hasFile('logo') ? (
+                        <div className="flex flex-col items-center w-full px-2">
+                          <FileText className="h-12 w-12 text-muted-foreground mb-2" />
+                          <p className="text-xs text-center text-muted-foreground break-words w-full leading-tight">
+                            {getFileName('logo')}
+                          </p>
+                        </div>
+                      ) : (
+                        <p className="text-muted-foreground text-sm">Nenhuma logo definida</p>
+                      )}
+                    </div>
+                  </CardContent>
+                  <CardFooter>
+                    <Button 
+                      variant="outline" 
+                      className="w-full" 
+                      onClick={() => handleDownload('logo', undefined)}
+                      disabled={!hasFile('logo') || downloading === 'logo'}
+                    >
+                      {downloading === 'logo' ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Baixando...
+                        </>
+                      ) : (
+                        <>
+                          <Download className="mr-2 h-4 w-4" />
+                          Baixar Logo
+                        </>
+                      )}
+                    </Button>
+                  </CardFooter>
+                </Card>
+                
                 <Card>
                   <CardHeader className="pb-3">
                     <CardTitle className="text-base">Timbrado</CardTitle>
@@ -248,10 +420,10 @@ const FormattingView: React.FC<FormattingViewProps> = ({ petitionId, userId, set
                   </CardHeader>
                   <CardContent className="pb-2">
                     <div className="flex items-center justify-center h-24 bg-muted/40 rounded-md">
-                      {settings.letterhead_r2_key ? (
-                        <div className="flex flex-col items-center">
+                      {hasFile('letterhead') ? (
+                        <div className="flex flex-col items-center w-full px-2">
                           <FileText className="h-12 w-12 text-muted-foreground mb-2" />
-                          <p className="text-xs text-center text-muted-foreground truncate w-full px-4">
+                          <p className="text-xs text-center text-muted-foreground break-words w-full leading-tight">
                             {getFileName('letterhead')}
                           </p>
                         </div>
@@ -264,8 +436,8 @@ const FormattingView: React.FC<FormattingViewProps> = ({ petitionId, userId, set
                     <Button 
                       variant="outline" 
                       className="w-full" 
-                      onClick={() => handleDownload('letterhead', settings.letterhead_r2_key)}
-                      disabled={!settings.letterhead_r2_key || downloading === 'letterhead'}
+                      onClick={() => handleDownload('letterhead', undefined)}
+                      disabled={!hasFile('letterhead') || downloading === 'letterhead'}
                     >
                       {downloading === 'letterhead' ? (
                         <>
@@ -289,10 +461,10 @@ const FormattingView: React.FC<FormattingViewProps> = ({ petitionId, userId, set
                   </CardHeader>
                   <CardContent className="pb-2">
                     <div className="flex items-center justify-center h-24 bg-muted/40 rounded-md">
-                      {settings.template_r2_key ? (
-                        <div className="flex flex-col items-center">
+                      {hasFile('template') ? (
+                        <div className="flex flex-col items-center w-full px-2">
                           <FileText className="h-12 w-12 text-muted-foreground mb-2" />
-                          <p className="text-xs text-center text-muted-foreground truncate w-full px-4">
+                          <p className="text-xs text-center text-muted-foreground break-words w-full leading-tight">
                             {getFileName('template')}
                           </p>
                         </div>
@@ -305,8 +477,8 @@ const FormattingView: React.FC<FormattingViewProps> = ({ petitionId, userId, set
                     <Button 
                       variant="outline" 
                       className="w-full"
-                      onClick={() => handleDownload('template', settings.template_r2_key)}
-                      disabled={!settings.template_r2_key || downloading === 'template'}
+                      onClick={() => handleDownload('template', undefined)}
+                      disabled={!hasFile('template') || downloading === 'template'}
                     >
                       {downloading === 'template' ? (
                         <>
@@ -325,9 +497,9 @@ const FormattingView: React.FC<FormattingViewProps> = ({ petitionId, userId, set
               </div>
 
               <div className="bg-muted/20 p-4 rounded-md border border-dashed">
-                <h4 className="font-medium mb-1 text-sm">Nota sobre modelos e timbrados</h4>
+                <h4 className="font-medium mb-1 text-sm">Nota sobre logo, modelos e timbrados</h4>
                 <p className="text-sm text-muted-foreground">
-                  Estes arquivos são usados como base para a geração de documentos. O usuário pode definir seu próprio modelo e timbrado padrão que serão aplicados a todas as petições.
+                  Estes arquivos são usados como base para a geração de documentos. O usuário pode definir sua própria logo, modelo e timbrado padrão que serão aplicados a todas as petições.
                 </p>
               </div>
             </div>

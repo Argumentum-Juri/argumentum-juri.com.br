@@ -1,11 +1,11 @@
 
 import { useState, useEffect, useCallback } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
+import { useGoAuth } from '@/contexts/GoAuthContext';
 import { checkTeamOwnership, CACHE_DURATIONS } from '@/utils/cacheUtils';
 import { supabase } from '@/integrations/supabase/client';
 
 export const useTeamOwnership = (teamId?: string | null) => {
-  const { user } = useAuth();
+  const { user } = useGoAuth();
   const [isOwner, setIsOwner] = useState(false);
   const [loading, setLoading] = useState(false);
 

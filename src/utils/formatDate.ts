@@ -4,14 +4,15 @@
  * @param dateString - ISO date string or any date string that can be parsed by Date constructor
  * @returns Formatted date string
  */
-export const formatDate = (dateString?: string): string => {
-  if (!dateString) return 'Data desconhecida';
+export const formatDate = (dateString?: string | null): string => {
+  if (!dateString) return 'Data não disponível';
   
   try {
     const date = new Date(dateString);
     
     // Check if the date is valid
     if (isNaN(date.getTime())) {
+      console.warn('Data inválida recebida:', dateString);
       return 'Data inválida';
     }
     
@@ -23,7 +24,7 @@ export const formatDate = (dateString?: string): string => {
       minute: '2-digit'
     }).format(date);
   } catch (error) {
-    console.error('Erro ao formatar data:', error);
+    console.error('Erro ao formatar data:', error, 'Input:', dateString);
     return 'Data inválida';
   }
 };

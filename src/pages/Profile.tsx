@@ -1,7 +1,9 @@
 
 import React from 'react';
+import { useAPIContext } from '@/contexts/APIContext';
+import ProfileAPI from '@/components/ProfileAPI';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useAuth } from '@/contexts/AuthContext';
+import { useGoAuth } from '@/contexts/GoAuthContext';
 import PersonalInfoTab from '@/components/profile/PersonalInfoTab';
 import OfficeInfoTab from '@/components/profile/OfficeInfoTab';
 import SecurityTab from '@/components/profile/SecurityTab';
@@ -9,7 +11,15 @@ import { useProfileData } from '@/hooks/useProfileData';
 import { teamSizeOptions, purchaseReasonOptions } from '@/components/profile/ProfileConstants';
 
 const Profile = () => {
-  const { user } = useAuth();
+  const { useNewProfileAPI } = useAPIContext();
+  
+  // Se usar nova API, renderizar o componente específico
+  if (useNewProfileAPI) {
+    return <ProfileAPI />;
+  }
+  
+  // Caso contrário, usar a implementação legacy
+  const { user } = useGoAuth();
   const {
     activeTab,
     setActiveTab,

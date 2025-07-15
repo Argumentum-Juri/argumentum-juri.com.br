@@ -23,6 +23,10 @@ const PetitionHeader: React.FC<PetitionHeaderProps> = ({ petition, isLoading, hi
     );
   }
 
+  // Verificação mais robusta das datas
+  const createdAt = petition.createdAt || petition.created_at;
+  const updatedAt = petition.updatedAt || petition.updated_at;
+
   return (
     <div className="space-y-2 w-full">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
@@ -30,8 +34,16 @@ const PetitionHeader: React.FC<PetitionHeaderProps> = ({ petition, isLoading, hi
         <StatusBadge status={petition.status} className="self-start sm:self-auto" />
       </div>
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs sm:text-sm text-muted-foreground">
-        <p>Criada em: {formatDate(petition.createdAt)}</p>
-        <p>Atualizada em: {formatDate(petition.updatedAt)}</p>
+        {createdAt ? (
+          <p>Criada em: {formatDate(createdAt)}</p>
+        ) : (
+          <p>Criada em: <span className="text-xs opacity-50">Carregando...</span></p>
+        )}
+        {updatedAt ? (
+          <p>Atualizada em: {formatDate(updatedAt)}</p>
+        ) : (
+          <p>Atualizada em: <span className="text-xs opacity-50">Carregando...</span></p>
+        )}
         {!hideId && (
           <p className="w-full sm:w-auto">ID: <span className="font-mono text-xs">{petition.id}</span></p>
         )}

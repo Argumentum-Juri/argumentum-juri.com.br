@@ -1,15 +1,16 @@
 
 import React, { useState, useEffect } from 'react';
 import { Skeleton } from "@/components/ui/skeleton";
-import { useAuth } from '@/contexts/AuthContext';
+import { useGoAuth } from '@/contexts/GoAuthContext';
 import { useStatsData } from '@/hooks/useStatsData';
 import StatsContainer from '@/components/stats/StatsContainer';
 import { useTeamOwnership } from '@/hooks/useTeamOwnership';
 
 const Stats = () => {
-  const { user, teamId } = useAuth();
+  const { user } = useGoAuth();
   const { stats, loading, investmentLoading, investmentError, fetchInvestmentTotal } = useStatsData(user?.id);
-  const { isOwner: isTeamOwner, loading: checkingOwnerStatus } = useTeamOwnership(teamId);
+  // Por enquanto, assumimos que não há equipe no GoAuthContext
+  const { isOwner: isTeamOwner, loading: checkingOwnerStatus } = useTeamOwnership(null);
   
   // Buscar dados de investimento se o usuário for dono da equipe
   useEffect(() => {

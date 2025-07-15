@@ -13,13 +13,12 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from '@/contexts/AuthContext';
+import { useGoAuth } from '@/contexts/GoAuthContext';
 
 const DeleteAccount = () => {
-  const { user, signOut } = useAuth();
+  const { user, signOut } = useGoAuth();
   const [open, setOpen] = useState(false);
   const [confirmText, setConfirmText] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
@@ -31,20 +30,13 @@ const DeleteAccount = () => {
     setIsDeleting(true);
     
     try {
-      // Chamar a função RPC para excluir os dados do usuário
+      // Chamar a função RPC para excluir os dados do usuário com o parâmetro correto
       const { error: rpcError } = await supabase.rpc('delete_user_data', {
-        user_id: user.id
+        p_user_id: user.id
       });
       
       if (rpcError) {
         throw rpcError;
-      }
-      
-      // Deletar o usuário da autenticação
-      const { error: authError } = await supabase.auth.admin.deleteUser(user.id);
-      
-      if (authError) {
-        throw authError;
       }
       
       // Fazer logout

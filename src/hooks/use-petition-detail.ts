@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { petitionService } from '@/services';
 import { toast } from 'sonner';
 import { PetitionDetail, PetitionStatus, PetitionAttachment, PetitionComment } from '@/types';
-import { useAuth } from '@/contexts/AuthContext';
+import { useGoAuth } from '@/contexts/GoAuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { getFromCache, saveToCache, CACHE_DURATIONS } from '@/utils/cacheUtils';
 
@@ -12,7 +12,7 @@ export type PetitionError = {
   message: string;
 };
 
-const FETCH_TIMEOUT = 30000; // Aumentado de 8s para 30s
+const FETCH_TIMEOUT = 30000;
 
 export const usePetitionDetail = (id: string) => {
   const location = useLocation();
@@ -22,68 +22,69 @@ export const usePetitionDetail = (id: string) => {
   const [approveLoading, setApproveLoading] = useState<boolean>(false);
   const [rejectLoading, setRejectLoading] = useState<boolean>(false);
   const [documents, setDocuments] = useState<any[]>([]);
+
+  // **Corrigido: usando as propriedades corretas do contexto**
+  const { user, authInitialized, isLoading: authLoading } = useGoAuth();
   
-  const { isAdmin, user, authInitialized, isLoading: authLoading } = useAuth();
-  
-  // Refs para controle robusto
+  // **Derivando isAdmin do user**
+  const isAdmin = useMemo(() => user?.isAdmin || false, [user?.isAdmin]);
+
   const isMountedRef = useRef(true);
   const abortControllerRef = useRef<AbortController | null>(null);
   const hasFetchedRef = useRef(false);
   const currentIdRef = useRef<string | null>(null);
-  
-  // Cache key estável e único por petição
+
   const cacheKey = useMemo(() => {
-    return user && id ? `petition_detail_${id}_${user.id}_${isAdmin ? 'admin' : 'user'}` : null;
+    return user && id
+      ? `petition_detail_${id}_${user.id}_${isAdmin ? 'admin' : 'user'}`
+      : null;
   }, [user?.id, id, isAdmin]);
 
-  // Validação simples e estável de ID
+  const documentsCacheKey = useMemo(() => {
+    return user && id
+      ? `petition_documents_${id}_${user.id}_${isAdmin ? 'admin' : 'user'}`
+      : null;
+  }, [user?.id, id, isAdmin]);
+
   const isValidId = useMemo(() => {
-    return id && id !== 'undefined' && id !== 'null' && id.trim() !== '';
+    return id && id.trim() !== '' && id !== 'undefined' && id !== 'null';
   }, [id]);
 
-  // Validação de rota MAIS TOLERANTE
+  // **Detectar se vem de criação de petição**
+  const fromCreate = useMemo(() => {
+    const urlParams = new URLSearchParams(location.search);
+    return urlParams.get('fromCreate') === 'true';
+  }, [location.search]);
+
+  // **Aceita tanto /petitions/:id quanto /admin/petitions/:id**
   const validRoute = useMemo(() => {
     if (!isValidId) return false;
-    return location.pathname.includes(`/petitions/${id}`);
+    return (
+      location.pathname.includes(`/petitions/${id}`) ||
+      location.pathname.includes(`/admin/petitions/${id}`)
+    );
   }, [location.pathname, id, isValidId]);
 
-  // Log de debug para rota e ID
+  // Logs de debug
   useEffect(() => {
-    console.log(`[usePetitionDetail] Rota atual: ${location.pathname} | ID atual: ${id}`);
+    console.log(`[usePetitionDetail] Rota: ${location.pathname} | ID: ${id}`);
   }, [location.pathname, id]);
 
-  // NOVO: Reset de hasFetchedRef quando ID mudar
+  // Reset inteligente quando muda o ID - evitar reset desnecessário
   useEffect(() => {
-    console.log('[usePetitionDetail] ♻️ Resetando fetch flag ao mudar ID');
-    hasFetchedRef.current = false;
-  }, [id]);
-
-  // NOVO: Reset de estado quando o ID muda
-  useEffect(() => {
-    console.log(`[usePetitionDetail] 🔄 ID mudou de "${currentIdRef.current}" para "${id}"`);
-    
     if (currentIdRef.current !== id) {
-      console.log(`[usePetitionDetail] 🧹 Resetando estado para nova petição`);
-      
-      // Reset do estado
-      setPetition(null);
-      setError(null);
-      setIsLoading(true);
-      setDocuments([]);
-      
-      // Reset do controle de fetch
+      console.log(`[usePetitionDetail] ID changed from ${currentIdRef.current} to ${id} - resetting`);
       hasFetchedRef.current = false;
       currentIdRef.current = id;
-      
-      // Cleanup do abort controller anterior
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-        abortControllerRef.current = null;
+      // Só limpar estados se o ID realmente mudou
+      if (currentIdRef.current && petition?.id !== id) {
+        setPetition(null);
+        setDocuments([]);
       }
     }
-  }, [id]);
+  }, [id, petition?.id]);
 
-  // Cleanup function
+  // Cleanup
   const cleanup = useCallback(() => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -91,359 +92,274 @@ export const usePetitionDetail = (id: string) => {
     }
   }, []);
 
-  // Função principal de fetch - estável com useCallback
-  const fetchPetitionData = useCallback(async (forceRefresh = false) => {
-    // LOGS DE DEBUG SOLICITADOS
-    console.log('📥 FetchPetition chamado para:', id);
-    console.log('👀 Auth:', { authInitialized, authLoading, user });
-    console.log('🧠 isValidRoute:', validRoute);
-    
-    console.log(`[usePetitionDetail] 🚀 Iniciando fetch - ID: ${id}, forceRefresh: ${forceRefresh}`);
-    
-    // Cleanup anterior
-    cleanup();
+  const fetchPetitionData = useCallback(
+    async (forceRefresh = false) => {
+      console.log('📥 fetchPetitionData', { id, forceRefresh, fromCreate, authInitialized, authLoading, user, isAdmin });
+      cleanup();
+      abortControllerRef.current = new AbortController();
+      const signal = abortControllerRef.current.signal;
 
-    // Novo AbortController
-    abortControllerRef.current = new AbortController();
-    const signal = abortControllerRef.current.signal;
+      setError(null);
+      setIsLoading(true);
 
-    setIsLoading(true);
-    setError(null);
-
-    // Timeout de segurança AUMENTADO
-    const timeoutId = setTimeout(() => {
-      if (isMountedRef.current) {
-        console.warn('[usePetitionDetail] ⏰ Timeout (30s) - abortando fetch');
-        cleanup();
+      const timeoutId = setTimeout(() => {
         if (isMountedRef.current) {
-          setError({ type: 'GENERIC', message: "Tempo limite excedido (30s)" });
+          console.warn('[usePetitionDetail] ⏰ Timeout — abortando');
+          cleanup();
+          setError({ type: 'GENERIC', message: 'Tempo limite excedido (30s)' });
           setIsLoading(false);
         }
-      }
-    }, FETCH_TIMEOUT);
+      }, FETCH_TIMEOUT);
 
-    try {
-      // Validações iniciais - SEMPRE garantir setIsLoading(false) no final
-      if (!isValidId) {
-        console.log('[usePetitionDetail] ❌ ID inválido');
-        setError({ type: 'NOT_FOUND', message: "ID da petição não fornecido" });
-        setIsLoading(false);
-        return;
-      }
-
-      if (!authInitialized || authLoading) {
-        console.log('[usePetitionDetail] ⏳ Aguardando auth - não executará setIsLoading(false)');
-        return; // Não executar setIsLoading(false) aqui - ainda aguardando
-      }
-
-      if (!user?.id) {
-        console.log('[usePetitionDetail] 🚫 Usuário não autenticado');
-        setError({ type: 'PERMISSION_DENIED', message: "Você precisa estar logado para acessar esta petição" });
-        setIsLoading(false);
-        return;
-      }
-
-      // Tentar cache primeiro (se não for refresh forçado) com validação melhorada
-      if (!forceRefresh && cacheKey) {
-        const cachedData = getFromCache<PetitionDetail>(cacheKey, CACHE_DURATIONS.SHORT);
-        if (cachedData && cachedData.id === id && cachedData.title) {
-          console.log('[usePetitionDetail] ✅ Cache usado corretamente:', cachedData.title);
-          setPetition(cachedData);
-          setError(null);
-          setIsLoading(false); // IMPORTANTE: definir loading como false
+      try {
+        if (!isValidId) {
+          setError({ type: 'NOT_FOUND', message: 'ID da petição não fornecido' });
+          setIsLoading(false);
           return;
-        } else {
-          console.warn('[usePetitionDetail] ⚠️ Cache ignorado ou inválido:', cachedData);
         }
-      }
+        if (!authInitialized || authLoading) return;
+        if (!user?.id) {
+          setError({ type: 'PERMISSION_DENIED', message: 'Você precisa estar logado' });
+          setIsLoading(false);
+          return;
+        }
+        if (!validRoute) {
+          setError({ type: 'GENERIC', message: 'Rota inválida' });
+          setIsLoading(false);
+          return;
+        }
 
-      console.log('[usePetitionDetail] 📡 Buscando dados da API...');
+        // cache - forçar refresh se vem de criação
+        const shouldSkipCache = forceRefresh || fromCreate;
+        if (!shouldSkipCache && cacheKey && documentsCacheKey) {
+          const cached = getFromCache<PetitionDetail>(cacheKey, CACHE_DURATIONS.SHORT);
+          const cachedDocs = getFromCache<any[]>(documentsCacheKey, CACHE_DURATIONS.SHORT);
+          
+          if (cached && cached.id === id) {
+            console.log('[usePetitionDetail] Usando cache da petição e documentos', { petition: cached, documents: cachedDocs });
+            setPetition(cached);
+            if (cachedDocs) {
+              setDocuments(cachedDocs);
+            }
+            setIsLoading(false);
+            return;
+          }
+        }
 
-      // Buscar petição principal
-      const { data: petitionData, error: petitionError } = await supabase
-        .from('petitions')
-        .select(`
-          id, title, description, legal_area, petition_type, has_process,
-          process_number, status, created_at, updated_at, user_id, team_id,
-          form_answers,
-          user:user_id (id, name, email, avatar_url)
-        `)
-        .eq('id', id)
-        .abortSignal(signal)
-        .maybeSingle();
-
-      if (signal.aborted) {
-        console.log('[usePetitionDetail] 🛑 Fetch abortado');
-        return;
-      }
-
-      if (petitionError) {
-        console.error('[usePetitionDetail] ❌ Erro ao buscar petição:', petitionError);
-        throw petitionError;
-      }
-
-      if (!petitionData) {
-        console.warn('[usePetitionDetail] ⚠️ Petição não encontrada');
-        setError({ type: 'NOT_FOUND', message: "Petição não encontrada" });
-        setIsLoading(false);
-        return;
-      }
-
-      // Verificar permissões
-      let hasAccess = false;
-      if (isAdmin) {
-        hasAccess = true;
-      } else if (petitionData.user_id === user.id) {
-        hasAccess = true;
-      } else if (petitionData.team_id) {
-        const { data: memberData } = await supabase
-          .from('team_members')
-          .select('id, role')
-          .eq('team_id', petitionData.team_id)
-          .eq('user_id', user.id)
+        // busca da petição
+        const { data: petitionData, error: petitionError } = await supabase
+          .from('petitions')
+          .select(`
+            id, title, description, legal_area, petition_type, has_process,
+            process_number, status, created_at, updated_at, user_id, team_id,
+            form_answers,
+            user:user_id(id,name,email,avatar_url)
+          `)
+          .eq('id', id)
           .abortSignal(signal)
           .maybeSingle();
 
         if (signal.aborted) return;
-        if (memberData) hasAccess = true;
-      }
-
-      if (!hasAccess) {
-        console.warn('[usePetitionDetail] 🚫 Sem permissão');
-        setError({ type: 'PERMISSION_DENIED', message: "Você não tem permissão para acessar esta petição" });
-        setIsLoading(false);
-        return;
-      }
-
-      // Montar objeto da petição
-      const petitionResult: PetitionDetail = {
-        id: petitionData.id,
-        title: petitionData.title,
-        description: petitionData.description,
-        legal_area: petitionData.legal_area,
-        petition_type: petitionData.petition_type,
-        has_process: petitionData.has_process,
-        process_number: petitionData.process_number,
-        status: petitionData.status as PetitionStatus,
-        created_at: petitionData.created_at,
-        updated_at: petitionData.updated_at,
-        createdAt: petitionData.created_at,
-        updatedAt: petitionData.updated_at,
-        user_id: petitionData.user_id,
-        team_id: petitionData.team_id,
-        user: petitionData.user,
-        form_answers: petitionData.form_answers as Record<string, any> || {},
-        attachments: [],
-        comments: []
-      };
-
-      // Buscar anexos e comentários em paralelo
-      const [attachmentsPromise, commentsPromise] = await Promise.allSettled([
-        supabase
-          .from('petition_attachments')
-          .select('*')
-          .eq('petition_id', id)
-          .abortSignal(signal),
-        supabase
-          .from('petition_comments')
-          .select('id, petition_id, author_id, content, created_at, updated_at')
-          .eq('petition_id', id)
-          .abortSignal(signal)
-      ]);
-
-      if (!signal.aborted) {
-        // Processar anexos
-        if (attachmentsPromise.status === 'fulfilled' && attachmentsPromise.value.data) {
-          petitionResult.attachments = attachmentsPromise.value.data as PetitionAttachment[];
+        if (petitionError) throw petitionError;
+        if (!petitionData) {
+          setError({ type: 'NOT_FOUND', message: 'Petição não encontrada' });
+          setIsLoading(false);
+          return;
         }
 
-        // Processar comentários
-        if (commentsPromise.status === 'fulfilled' && commentsPromise.value.data) {
-          const commentsData = commentsPromise.value.data;
-          if (commentsData.length > 0) {
-            const authorIds = [...new Set(commentsData.map(c => c.author_id))];
-            
-            const { data: authorsData } = await supabase
-              .from('profiles')
-              .select('id, name, email, avatar_url')
-              .in('id', authorIds)
-              .abortSignal(signal);
-            
-            if (!signal.aborted && authorsData) {
-              const authorsMap: Record<string, any> = {};
-              authorsData.forEach(author => {
-                authorsMap[author.id] = author;
-              });
-              
-              const commentsWithAuthors = commentsData.map(comment => ({
-                ...comment,
-                author: authorsMap[comment.author_id] || null
-              }));
-              
-              petitionResult.comments = commentsWithAuthors as PetitionComment[];
-            }
+        // permissões
+        let hasAccess = isAdmin || petitionData.user_id === user.id;
+        if (!hasAccess && petitionData.team_id) {
+          const { data: member } = await supabase
+            .from('team_members')
+            .select('id')
+            .eq('team_id', petitionData.team_id)
+            .eq('user_id', user.id)
+            .abortSignal(signal)
+            .maybeSingle();
+          hasAccess = !!member;
+        }
+        if (!hasAccess) {
+          setError({ type: 'PERMISSION_DENIED', message: 'Sem permissão' });
+          setIsLoading(false);
+          return;
+        }
+
+        // monta objeto principal
+        const result: PetitionDetail = {
+          id: petitionData.id,
+          title: petitionData.title,
+          description: petitionData.description,
+          legal_area: petitionData.legal_area,
+          petition_type: petitionData.petition_type,
+          has_process: petitionData.has_process,
+          process_number: petitionData.process_number,
+          status: petitionData.status as PetitionStatus,
+          created_at: petitionData.created_at,
+          updated_at: petitionData.updated_at,
+          createdAt: petitionData.created_at,
+          updatedAt: petitionData.updated_at,
+          user_id: petitionData.user_id,
+          team_id: petitionData.team_id,
+          user: petitionData.user,
+          form_answers: (petitionData.form_answers as Record<string, any>) || {},
+          attachments: [],
+          comments: []
+        };
+
+        // anexo, comentários e documentos em paralelo
+        const [atRes, cmRes, docsRes] = await Promise.allSettled([
+          supabase
+            .from('petition_attachments')
+            .select('*')
+            .eq('petition_id', id)
+            .abortSignal(signal),
+          supabase
+            .from('petition_comments')
+            .select('id,petition_id,author_id,content,created_at,updated_at')
+            .eq('petition_id', id)
+            .abortSignal(signal),
+          supabase
+            .from('petition_documents')
+            .select('*')
+            .eq('petition_id', id)
+            .order('created_at', { ascending: false })
+            .abortSignal(signal)
+        ]);
+
+        if (!signal.aborted) {
+          if (atRes.status === 'fulfilled' && atRes.value.data) {
+            result.attachments = atRes.value.data as PetitionAttachment[];
           }
-        }
-      }
+          if (cmRes.status === 'fulfilled' && cmRes.value.data.length) {
+            const authors = await supabase
+              .from('profiles')
+              .select('id,name,email,avatar_url')
+              .in('id', cmRes.value.data.map(c => c.author_id))
+              .abortSignal(signal);
 
-      // Atualizar estado apenas se ainda estiver montado e não abortado
-      if (isMountedRef.current && !signal.aborted) {
-        console.log('[usePetitionDetail] ✅ Petição carregada com sucesso:', petitionResult.title);
-        setPetition(petitionResult);
-        setError(null);
-        
-        // Salvar no cache com validação melhorada
-        if (cacheKey && petitionResult.id === id) {
-          saveToCache(cacheKey, petitionResult, `Salvando petição ${petitionResult.title} no cache`);
-        }
+            const map: Record<string, any> = {};
+            authors.data?.forEach(a => (map[a.id] = a));
 
-        // Buscar documentos em background
-        setTimeout(async () => {
-          try {
-            if (!signal.aborted && isMountedRef.current) {
-              const docsData = await petitionService.getPetitionDocuments(id);
-              if (isMountedRef.current && !signal.aborted) {
-                setDocuments(docsData || []);
+            result.comments = cmRes.value.data.map(c => ({
+              ...c,
+              author: map[c.author_id] || null
+            })) as PetitionComment[];
+          }
+          // Buscar documentos e salvar no cache
+          if (docsRes.status === 'fulfilled' && docsRes.value.data) {
+            const docs = docsRes.value.data || [];
+            if (isMountedRef.current && !signal.aborted) {
+              setDocuments(docs);
+              // Salvar documentos no cache separadamente
+              if (!fromCreate && documentsCacheKey) {
+                saveToCache(documentsCacheKey, docs, `Documentos da petição ${result.title}`);
               }
             }
-          } catch (docError: any) {
-            if (docError.name !== 'AbortError') {
-              console.error('[usePetitionDetail] ⚠️ Erro ao carregar documentos:', docError);
-            }
           }
-        }, 100);
-      }
+        }
 
-    } catch (err: any) {
-      if (err.name === 'AbortError') {
-        console.log('[usePetitionDetail] 🛑 Fetch abortado por cleanup');
-        return;
+        if (isMountedRef.current && !signal.aborted) {
+          setPetition(result);
+          // Só salvar no cache se não vem de criação
+          if (!fromCreate) {
+            saveToCache(cacheKey!, result, `Petição ${result.title}`);
+          }
+        }
+      } catch (err: any) {
+        if (err.name !== 'AbortError' && isMountedRef.current) {
+          setError({ type: 'GENERIC', message: err.message ?? 'Erro desconhecido' });
+          toast.error('Não foi possível carregar os detalhes da petição');
+        }
+      } finally {
+        clearTimeout(timeoutId);
+        if (isMountedRef.current) setIsLoading(false);
+        cleanup();
       }
-      
-      console.error('[usePetitionDetail] ❌ Erro inesperado:', err);
-      
-      if (isMountedRef.current) {
-        const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
-        setError({ type: 'GENERIC', message: errorMessage });
-        toast.error("Não foi possível carregar os detalhes da petição");
-      }
-    } finally {
-      clearTimeout(timeoutId);
-      // SEMPRE executar setIsLoading(false) se componente montado
-      if (isMountedRef.current) {
-        setIsLoading(false);
-      }
-      cleanup();
-    }
-  }, [id, user?.id, isAdmin, cacheKey, isValidId, authInitialized, authLoading, cleanup, validRoute]);
-
-  // Effect principal UNIFICADO - dependências estáveis
-  useEffect(() => {
-    console.log('[usePetitionDetail] 🎯 EFFECT PRINCIPAL', {
+    },
+    [
       id,
+      user?.id,
+      isAdmin,
       authInitialized,
       authLoading,
-      userId: user?.id,
-      hasFetched: hasFetchedRef.current,
-      isValidRoute: validRoute
-    });
+      cacheKey,
+      documentsCacheKey, // Adicionar documentsCacheKey como dependência
+      isValidId,
+      validRoute,
+      fromCreate,
+      cleanup
+    ]
+  );
 
-    // Aguardar condições mínimas
-    if (!authInitialized || authLoading || !isValidId || !validRoute) {
-      console.log('[usePetitionDetail] ⏳ Aguardando condições mínimas');
-      if (authInitialized && !authLoading && !user?.id) {
-        setError({ type: 'PERMISSION_DENIED', message: "Você precisa estar logado para acessar esta petição" });
-        setIsLoading(false);
-      }
-      return;
-    }
-
-    // Fetch apenas se ainda não buscou
-    if (!hasFetchedRef.current) {
-      console.log('[usePetitionDetail] ✅ Condições atendidas - iniciando fetch');
-      hasFetchedRef.current = true;
-      fetchPetitionData(false);
-    }
-
-  }, [authInitialized, authLoading, user?.id, isValidId, validRoute, fetchPetitionData]);
-
-  // Handler de visibilidade separado
+  // efeito principal - forçar refresh se vem de criação
   useEffect(() => {
-    const handleVisibilityChange = () => {
+    if (authInitialized && !authLoading && user?.id && validRoute && !hasFetchedRef.current) {
+      hasFetchedRef.current = true;
+      fetchPetitionData(fromCreate); // Forçar refresh se vem de criação
+    }
+  }, [authInitialized, authLoading, user?.id, validRoute, fromCreate, fetchPetitionData]);
+
+  // refetch ao voltar à aba
+  useEffect(() => {
+    const onVis = () => {
       if (!document.hidden && validRoute && hasFetchedRef.current) {
-        console.log('[usePetitionDetail] 👁️ Tab ficou visível - refetch');
         fetchPetitionData(true);
       }
     };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
   }, [validRoute, fetchPetitionData]);
 
-  // Cleanup na desmontagem
-  useEffect(() => {
-    return () => {
-      console.log('[usePetitionDetail] 🧹 Cleanup - desmontando hook');
-      isMountedRef.current = false;
-      cleanup();
-    };
+  // cleanup
+  useEffect(() => () => {
+    isMountedRef.current = false;
+    cleanup();
   }, [cleanup]);
 
-  // Action handlers
+  // ações
   const handleApprovePetition = async () => {
     if (!petition) return false;
-    
     setApproveLoading(true);
     try {
       await petitionService.updatePetitionStatus(petition.id, PetitionStatus.APPROVED);
-      // Forçar refresh após ação
       hasFetchedRef.current = false;
       await fetchPetitionData(true);
-      hasFetchedRef.current = true;
-      toast.success("Petição aprovada com sucesso!");
+      toast.success('Petição aprovada com sucesso!');
       return true;
-    } catch (err: any) {
-      console.error(`[usePetitionDetail] ❌ Erro ao aprovar petição: ${err.message}`);
-      toast.error(`Erro ao aprovar petição: ${err.message}`);
+    } catch (e: any) {
+      toast.error(`Erro ao aprovar: ${e.message}`);
       return false;
     } finally {
       setApproveLoading(false);
     }
   };
-  
+
   const handleRejectPetition = async (reason: string) => {
     if (!petition) return false;
-    
     setRejectLoading(true);
     try {
       await petitionService.updatePetitionStatus(petition.id, PetitionStatus.REJECTED);
       await petitionService.addComment(petition.id, reason);
-      // Forçar refresh após ação
       hasFetchedRef.current = false;
       await fetchPetitionData(true);
-      hasFetchedRef.current = true;
-      toast.success("Petição rejeitada.");
+      toast.success('Petição rejeitada.');
       return true;
-    } catch (err: any) {
-      console.error(`[usePetitionDetail] ❌ Erro ao rejeitar petição: ${err.message}`);
-      toast.error(`Erro ao rejeitar petição: ${err.message}`);
+    } catch (e: any) {
+      toast.error(`Erro ao rejeitar: ${e.message}`);
       return false;
     } finally {
       setRejectLoading(false);
     }
   };
-  
+
   const refresh = useCallback(async () => {
-    console.log(`[usePetitionDetail] 🔄 Refresh manual`);
     if (isValidId && validRoute) {
       hasFetchedRef.current = false;
       await fetchPetitionData(true);
-      hasFetchedRef.current = true;
     }
   }, [isValidId, validRoute, fetchPetitionData]);
-  
+
   return {
     petition,
     isLoading,
@@ -453,7 +369,7 @@ export const usePetitionDetail = (id: string) => {
     handleApprovePetition,
     handleRejectPetition,
     documents,
-    refresh,
-    isAdmin
+    isAdmin,
+    refresh
   };
 };

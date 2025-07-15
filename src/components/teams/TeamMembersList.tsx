@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -15,7 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from '@/components/ui/button';
 import { MoreHorizontal, Shield, UserX, Users, UserCog } from 'lucide-react';
-import { useAuth } from '@/contexts/AuthContext';
+import { useGoAuth } from '@/contexts/GoAuthContext';
 
 interface TeamMembersListProps {
   teamId: string;
@@ -34,7 +33,7 @@ const TeamMembersList: React.FC<TeamMembersListProps> = ({
   currentUserId,
   onMemberUpdated
 }) => {
-  const { user } = useAuth();
+  const { user } = useGoAuth();
   const [members, setMembers] = useState<TeamMember[]>(initialMembers || []);
   const [loading, setLoading] = useState(!initialMembers);
   const [isOwner, setIsOwner] = useState(false);

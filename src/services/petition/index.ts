@@ -3,7 +3,7 @@
 
 import { 
     petitionCore, 
-    DEFAULT_PETITION_COST as CORE_DEFAULT_PETITION_COST, // Importar com alias para evitar conflito se reexportar abaixo
+    DEFAULT_PETITION_COST as CORE_DEFAULT_PETITION_COST,
     validateTokensForPetition as CORE_validateTokensForPetition 
 } from './core';
 import { petitionDocuments } from './petitionDocuments';
@@ -14,15 +14,15 @@ import { petitionSettings } from './petitionSettings';
 
 // Agregando todos os serviços em um único objeto para manter compatibilidade
 export const petitionService = {
-  // Operações básicas de petição
+  // Operações básicas de petição - AGORA USANDO A IMPLEMENTAÇÃO CORE QUE TEM COBRANÇA DE TOKENS
   getPetition: petitionCore.getPetition,
   getPetitionDetail: petitionCore.getPetitionDetail,
   getPetitions: petitionCore.getPetitions,
-  createPetition: petitionCore.createPetition,
+  createPetition: petitionCore.createPetition, // <<<--- MUDANÇA: Agora usa petitionCore em vez de Go API
   updatePetition: petitionCore.updatePetition,
   updatePetitionStatus: petitionCore.updatePetitionStatus,
-  getAllPetitions: petitionCore.getAllPetitions, // Expose getAllPetitions directly
-  validateTokensForPetition: CORE_validateTokensForPetition, // <--- Adicionar aqui usando o alias
+  getAllPetitions: petitionCore.getAllPetitions,
+  validateTokensForPetition: CORE_validateTokensForPetition,
 
   // Operações de documentos
   getPetitionDocuments: petitionDocuments.getPetitionDocuments,

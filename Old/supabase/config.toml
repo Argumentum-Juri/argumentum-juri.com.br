@@ -1,0 +1,111 @@
+project_id = "mefgswdpeellvaggvttc"
+
+# Definição de buckets R2 que a função pode usar:
+[[r2]]
+# nome do binding que vai aparecer em `env`
+binding = "ARGUMENTUM"
+# nome exato do bucket R2 no painel da Cloudflare
+bucket_name = "argumentum"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+
+[db.pooler]
+enabled = false
+port = 54329
+pool_mode = "transaction"
+default_pool_size = 20
+max_client_conn = 100
+
+[realtime]
+enabled = true
+ip_version = "ipv4"
+
+[studio]
+enabled = true
+port = 54323
+api_url = "http://127.0.0.1:54321"
+
+[inbucket]
+enabled = true
+port = 54324
+
+[storage]
+enabled = true
+file_size_limit = "50MiB"
+image_transformation = { enabled = true }
+
+[auth]
+enabled = true
+site_url = "http://127.0.0.1:3000"
+additional_redirect_urls = ["https://lovable.dev"]
+jwt_expiry = 3600
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+double_confirm_changes = true
+enable_confirmations = false
+
+[edge_functions]
+enabled = true
+
+[functions]
+enabled = true
+
+[functions.api-auth]
+verify_jwt = false
+
+[functions.api-petitions]
+verify_jwt = false
+
+[functions.api-profile]
+verify_jwt = false
+
+[functions.api-teams]
+verify_jwt = false
+
+[functions.api-documents]
+verify_jwt = false
+
+[functions.upload-document]
+verify_jwt = true
+
+[functions.get-user-token-balance]
+verify_jwt = false
+
+# Desabilita JWT para o Stripe webhook
+[functions.webhook-stripe]
+verify_jwt = false
+
+# Debug webhook sem JWT
+[functions.webhook-stripe-debug]
+verify_jwt = false
+
+# Sync stripe subscription sem JWT automático
+[functions.sync-stripe-subscription]
+verify_jwt = false
+
+# Manual token verification com JWT
+[functions.manual-token-verification]
+verify_jwt = true
+
+[functions.verify-payment]
+verify_jwt = true
+
+[functions.subscription-checkout]
+verify_jwt = false
+
+[functions.verify-subscription-checkout]
+verify_jwt = false
+
+[functions.check-subscription-status]
+verify_jwt = false
+

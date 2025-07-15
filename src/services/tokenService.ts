@@ -1,36 +1,82 @@
-
 // src/services/tokenService.ts
 import { supabase } from "@/integrations/supabase/client";
-import { toast } from 'sonner'; // Para feedback visual ao usuário
+import { toast } from 'sonner';
 
 export const tokenService = {
   /**
    * Busca o saldo de tokens PESSOAIS do usuário atualmente autenticado.
-   * Sempre busca do banco de dados para garantir o valor mais recente.
-   * Não armazena em cache para evitar inconsistências.
+   * Prioriza a Edge Function mas tem fallback para consulta direta ao Supabase.
+   * Implementa retry automático em caso de falha.
    */
   async getPersonalTokenBalance(): Promise<number> {
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
-      
-      if (authError || !user) {
-        return 0;
+      // Primeiro: tentar usar a Edge Function
+      const goAuthToken = localStorage.getItem('auth_token');
+      if (!goAuthToken) {
+        console.warn('Token Go Auth não encontrado no localStorage');
+        // Fallback: tentar consulta direta via RLS
+        return await this.getPersonalTokenBalanceFallback();
       }
+
+      const { data, error } = await supabase.functions.invoke('get-user-token-balance', {
+        headers: {
+          'Authorization': `Bearer ${goAuthToken}`
+        }
+      });
       
-      const { data, error: dbError } = await supabase
-        .from('user_tokens')
-        .select('tokens')
-        .eq('user_id', user.id)
-        .single();
-      
-      if (dbError && dbError.code !== 'PGRST116') { // PGRST116: no rows found, normal
-        console.error('Erro ao buscar saldo de tokens pessoal do banco:', dbError);
-        return 0;
+      if (error) {
+        console.error('Erro ao buscar saldo pessoal de tokens via Edge Function:', error);
+        // Fallback: tentar consulta direta via RLS
+        return await this.getPersonalTokenBalanceFallback();
       }
       
       return data?.tokens || 0;
     } catch (error) {
       console.error('Exceção em getPersonalTokenBalance:', error);
+      // Fallback: tentar consulta direta via RLS
+      return await this.getPersonalTokenBalanceFallback();
+    }
+  },
+
+  /**
+   * Fallback para buscar tokens diretamente via RLS quando a Edge Function falha.
+   * Usa a sessão atual do Supabase para autenticação.
+   */
+  async getPersonalTokenBalanceFallback(): Promise<number> {
+    try {
+      console.log('Usando fallback: consulta direta via RLS');
+      
+      // Verificar se há sessão ativa
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user?.id) {
+        console.warn('Nenhuma sessão ativa encontrada para fallback');
+        return 0;
+      }
+
+      // Consulta direta usando RLS
+      const { data, error } = await supabase
+        .from('user_tokens')
+        .select('tokens')
+        .eq('user_id', session.user.id)
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        console.error('Erro na consulta RLS fallback:', error);
+        return 0;
+      }
+
+      if (error && error.code === 'PGRST116') {
+        // Usuário não tem registro, retornar 0
+        console.log('Usuário não possui registro de tokens (fallback)');
+        return 0;
+      }
+
+      const tokens = data?.tokens || 0;
+      console.log(`Saldo obtido via fallback RLS: ${tokens}`);
+      return tokens;
+      
+    } catch (error) {
+      console.error('Erro no fallback RLS:', error);
       return 0;
     }
   },
@@ -44,7 +90,7 @@ export const tokenService = {
 
   /**
    * Busca o saldo de tokens da EQUIPE especificada (saldo do proprietário da equipe).
-   * Implementa cache local para reduzir chamadas à Edge Function 'get-team-token-balance'.
+   * Implementa cache local para reduzir chamadas à API.
    * @param teamId O ID da equipe.
    * @param forceRefresh Se verdadeiro, ignora o cache e força uma nova busca.
    */
@@ -55,7 +101,7 @@ export const tokenService = {
     }
 
     try {
-      // Implementação de cache local para reduzir chamadas à edge function
+      // Implementação de cache local para reduzir chamadas à API
       const cacheKey = `team_tokens_${teamId}`;
       const timestampKey = `team_tokens_timestamp_${teamId}`;
       const cached = localStorage.getItem(cacheKey);
@@ -68,14 +114,26 @@ export const tokenService = {
         return parseInt(cached);
       }
       
-      console.log(`Invocando 'get-team-token-balance' para teamId: ${teamId}`);
-      const { data: functionResponse, error: functionError } = await supabase.functions.invoke('get-team-token-balance', {
+      console.log(`Buscando saldo da equipe ${teamId} via Edge Function...`);
+      
+      // Usar o token Go Auth armazenado no localStorage
+      const goAuthToken = localStorage.getItem('auth_token');
+      if (!goAuthToken) {
+        console.error('Token Go Auth não encontrado no localStorage');
+        toast.error('Erro de Autenticação', { description: 'Token de autenticação não encontrado.' });
+        return 0;
+      }
+
+      // Chamar a Edge Function com o token Go Auth
+      const { data, error } = await supabase.functions.invoke('get-team-token-balance', {
         body: { teamId },
+        headers: {
+          'Authorization': `Bearer ${goAuthToken}`
+        }
       });
 
-      if (functionError) {
-        console.error(`Erro ao invocar get-team-token-balance para teamId ${teamId}:`, functionError.message);
-        const errorDetail = (functionError as any).context?.reason || (functionError as any).message || "Detalhes não disponíveis";
+      if (error) {
+        console.error(`Erro ao buscar saldo da equipe ${teamId}:`, error);
         
         // Usar cache como fallback em caso de erro, se disponível
         if (cached) {
@@ -83,12 +141,12 @@ export const tokenService = {
           return parseInt(cached);
         }
         
-        toast.error('Falha ao Buscar Saldo da Equipe', { description: `Não foi possível obter o saldo da equipe. ${errorDetail}` });
+        toast.error('Falha ao Buscar Saldo da Equipe', { description: `Não foi possível obter o saldo da equipe. ${error.message}` });
         return 0;
       }
 
-      if (typeof functionResponse?.tokens !== 'number') {
-        console.error('Resposta inválida da função get-team-token-balance:', functionResponse);
+      if (typeof data?.tokens !== 'number') {
+        console.error('Resposta inválida da Edge Function:', data);
         
         // Usar cache como fallback para resposta inválida
         if (cached) {
@@ -99,7 +157,7 @@ export const tokenService = {
         return 0;
       }
       
-      const tokens = functionResponse.tokens;
+      const tokens = data.tokens;
       console.log(`Saldo da equipe ${teamId}: ${tokens} (atualizado do servidor)`);
       
       // Salvar no cache local
@@ -210,7 +268,7 @@ export const tokenService = {
   },
   
   // --- Funções de Pagamento e Assinatura (Stripe) ---
-
+  
   async createCheckoutSession(tokensAmount: number, price: number) {
     try {
       console.log(`Invocando 'token-checkout' para ${tokensAmount} tokens, preço ${price}`);

@@ -1,103 +1,100 @@
-import { supabase } from '@/integrations/supabase/client'; // Para interações com o DB
-import { PetitionAttachment } from '@/types'; // Tipo para retorno
-import { r2Storage } from '@/services/storage/r2Storage'; // Sua abstração para R2/Edge Functions
+import { supabase } from '@/integrations/supabase/client';
+import { PetitionAttachment } from '@/types';
 import { toast } from 'sonner';
 
-// Assume que todo novo anexo vai para R2
-const STORAGE_PROVIDER = 'r2';
+// Assume que todo novo anexo vai para Supabase Storage
+const STORAGE_PROVIDER = 'supabase';
 
 // --- Helper para Sanitizar Nomes de Arquivo ---
-// (Coloque em src/lib/utils.ts ou mantenha aqui se preferir)
-function sanitizeFilenameForR2(filename: string): string {
-  // 1. Substitui espaços e caracteres comuns problemáticos por underline
-  // Adicione outros caracteres se necessário: /[\s()\[\]{}'"\\\/+?&=#%]/g
+function sanitizeFilenameForStorage(filename: string): string {
   let sanitized = filename.replace(/[\s()\[\]{}'"]/g, '_');
-  // 2. Remove múltiplos underlines consecutivos
   sanitized = sanitized.replace(/_{2,}/g, '_');
-  // 3. Remove underlines no início ou fim
   sanitized = sanitized.replace(/^_+|_+$/g, '');
-  // 4. Garante que não fique vazio
   return sanitized || 'arquivo_sanitizado';
 }
-// --- Fim do Helper ---
 
 // Interface para o retorno de upload
 interface AttachmentUploadResult {
     success: boolean;
-    attachment?: PetitionAttachment; // Retorna o anexo criado no DB
+    attachment?: PetitionAttachment;
     error?: string;
 }
 
 /**
- * Faz upload de um anexo de petição para R2 via Edge Function
- * e salva os metadados no Supabase DB.
- * AGORA SANITIZA O NOME DO ARQUIVO PARA A CHAVE R2.
+ * Faz upload de um anexo via Supabase Storage e salva metadados no DB
  */
 const uploadAttachment = async (petitionId: string, file: File): Promise<AttachmentUploadResult> => {
-  const originalFilename = file.name; // Guarda nome original
+  const originalFilename = file.name;
   console.log(`[uploadAttachment Service] Iniciando para petitionId: ${petitionId}, file: ${originalFilename}`);
+  
   try {
-    // 1. Gera a Key R2 SANITIZADA
+    // 1. Gera path sanitizado
     const timestamp = new Date().getTime();
-    // *** SANITIZAÇÃO APLICADA AQUI ***
-    const sanitizedFilenamePart = sanitizeFilenameForR2(originalFilename);
-    const finalFilenameForKey = `${timestamp}-${sanitizedFilenamePart}`; // Usa nome sanitizado na key
-    // *** FIM DA SANITIZAÇÃO ***
-    const r2Key = `petition-files/${petitionId}/attachments/${finalFilenameForKey}`; // Caminho completo sanitizado
+    const sanitizedFilenamePart = sanitizeFilenameForStorage(originalFilename);
+    const finalFilenameForKey = `${timestamp}-${sanitizedFilenamePart}`;
+    const storagePath = `petition-files/${petitionId}/attachments/${finalFilenameForKey}`;
 
-    console.log(`[uploadAttachment Service] Original: ${originalFilename}, Sanitized Part: ${sanitizedFilenamePart}, R2 Key: ${r2Key}`);
+    console.log(`[uploadAttachment Service] Original: ${originalFilename}, Storage Path: ${storagePath}`);
 
-    // 2. Chama a abstração que invoca a Edge Function 'r2-upload' com a key JÁ SANITIZADA
-    console.log(`[uploadAttachment Service] Chamando r2Storage.uploadFile para key: ${r2Key}`);
-    const uploadResult = await r2Storage.uploadFile(r2Key, file); // Passa a key sanitizada
+    // 2. Upload via Supabase Storage
+    console.log(`[uploadAttachment Service] Fazendo upload para Supabase Storage: ${storagePath}`);
+    
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('petition-assets')
+      .upload(storagePath, file, {
+        cacheControl: '3600',
+        upsert: false
+      });
 
-    if (!uploadResult.success || !uploadResult.key) {
-      console.error('[uploadAttachment Service] Falha no upload via r2Storage:', uploadResult.error);
-      throw new Error(uploadResult.error || 'Falha ao fazer upload do anexo para o armazenamento R2.');
+    if (uploadError) {
+      console.error('[uploadAttachment Service] Erro no upload Supabase:', uploadError);
+      return {
+        success: false,
+        error: uploadError.message || 'Erro ao fazer upload do anexo'
+      };
     }
 
-    const returnedKey = uploadResult.key; // Deve ser a mesma key sanitizada
-    const publicUrl = uploadResult.url; // A URL pública (que agora terá a key sanitizada)
-    console.log('[uploadAttachment Service] Upload R2 OK. Key:', returnedKey, 'URL:', publicUrl);
+    // 3. Obter URL pública
+    const { data: publicUrlData } = supabase.storage
+      .from('petition-assets')
+      .getPublicUrl(uploadData.path);
 
-    // 3. Salva os metadados no banco de dados Supabase
-    console.log('[uploadAttachment Service] Salvando metadados no DB...');
+    // 4. Salvar no banco
     const { data: dbData, error: dbError } = await supabase
       .from('petition_attachments')
       .insert({
         petition_id: petitionId,
-        file_name: originalFilename, // *** Salva o NOME ORIGINAL no DB ***
-        storage_path: null, // Campo antigo não usado
+        file_name: originalFilename,
+        storage_path: uploadData.path,
         file_type: file.type,
         size: file.size,
-        file_url: publicUrl, // URL pública com key sanitizada
-        storage_provider: STORAGE_PROVIDER,
-        r2_key: returnedKey // Salva a key SANITIZADA usada no R2
+        file_url: publicUrlData.publicUrl,
+        storage_provider: STORAGE_PROVIDER
       })
       .select('*')
       .single();
 
     if (dbError) {
-      console.error('[uploadAttachment Service] Erro ao salvar metadados no DB:', dbError);
-      console.warn(`[uploadAttachment Service] Tentando reverter upload R2 para key: ${returnedKey}`);
-      await r2Storage.deleteFile(returnedKey).catch(delErr => console.error("Falha ao reverter upload R2:", delErr));
-      throw new Error(`Erro ao salvar metadados no banco: ${dbError.message}`);
+      console.error('[uploadAttachment Service] Erro ao salvar no DB:', dbError);
+      // Reverter upload
+      await supabase.storage.from('petition-assets').remove([uploadData.path]);
+      return {
+        success: false,
+        error: `Erro ao salvar metadados: ${dbError.message}`
+      };
     }
 
     console.log('[uploadAttachment Service] Metadados salvos OK:', dbData);
 
-    // Mapeia para o tipo de retorno, usando o nome original salvo no DB
     const createdAttachment: PetitionAttachment = {
       id: dbData.id,
       petition_id: dbData.petition_id,
-      file_name: dbData.file_name, // Nome original para exibição
+      file_name: dbData.file_name,
       file_type: dbData.file_type,
-      storage_path: dbData.r2_key || '', // Mapeia a key sanitizada
+      storage_path: dbData.storage_path || '',
       size: dbData.size || 0,
       created_at: dbData.created_at,
-      file_url: dbData.file_url || '', // URL com key sanitizada
-      // r2_key: dbData.r2_key, // Descomente se precisar do campo explícito
-      // storage_provider: dbData.storage_provider
+      file_url: dbData.file_url || ''
     };
 
     return {
@@ -114,10 +111,7 @@ const uploadAttachment = async (petitionId: string, file: File): Promise<Attachm
   }
 };
 
-// --- getAttachments (NÃO MUDA) ---
-// Continua buscando do DB, onde file_name é o original e r2_key é a sanitizada
 const getAttachments = async (petitionId: string): Promise<{ success: boolean; data?: PetitionAttachment[]; error?: string; }> => {
-    // ... código mantido como na v9 ...
      console.log(`[getAttachments DB] Buscando anexos para petitionId: ${petitionId}`);
      try {
         const { data: attachmentsData, error: dbError } = await supabase
@@ -133,50 +127,69 @@ const getAttachments = async (petitionId: string): Promise<{ success: boolean; d
             petition_id: dbAttachment.petition_id,
             file_name: dbAttachment.file_name || 'Nome Desconhecido',
             file_type: dbAttachment.file_type || 'application/octet-stream',
-            storage_path: dbAttachment.r2_key || dbAttachment.storage_path || '',
+            storage_path: dbAttachment.storage_path || '',
             size: dbAttachment.size || 0,
             created_at: dbAttachment.created_at,
             file_url: dbAttachment.file_url || '',
-            // r2_key: dbAttachment.r2_key,
-            // storage_provider: dbAttachment.storage_provider
         }));
         return { success: true, data: mappedAttachments };
-     } catch (error) { /* ... tratamento erro ... */ }
-     return { success: false, error: 'Erro desconhecido' }; // Fallback
+     } catch (error) {
+        console.error('[getAttachments DB] Erro:', error);
+        return { success: false, error: 'Erro ao buscar anexos' };
+     }
 };
 
-// --- deleteAttachment (NÃO MUDA) ---
-// Continua buscando r2_key do DB (que é a sanitizada) e passando para r2Storage.deleteFile
 const deleteAttachment = async (attachmentId: string): Promise<{ success: boolean; message?: string; error?: string }> => {
-    // ... código mantido como na v9 ...
      console.log(`[deleteAttachment Service] Iniciando exclusão do anexo ID: ${attachmentId}`);
-     let r2KeyToDelete: string | null = null;
      try {
         const { data: attachment, error: fetchError } = await supabase
           .from('petition_attachments')
-          .select('r2_key, storage_provider, file_name')
+          .select('storage_path, storage_provider, file_name')
           .eq('id', attachmentId)
           .single();
-        if (fetchError && fetchError.code !== 'PGRST116') throw new Error(`Erro DB fetch: ${fetchError.message}`);
-        if (!attachment) return { success: true, message: "Registro não encontrado." };
+          
+        if (fetchError && fetchError.code !== 'PGRST116') {
+          throw new Error(`Erro DB fetch: ${fetchError.message}`);
+        }
+        
+        if (!attachment) {
+          return { success: true, message: "Registro não encontrado." };
+        }
 
-        r2KeyToDelete = attachment?.r2_key;
-        if (attachment?.storage_provider === 'r2' && r2KeyToDelete) {
-            const r2DeleteSuccess = await r2Storage.deleteFile(r2KeyToDelete);
-            if (!r2DeleteSuccess) throw new Error("Falha ao excluir do R2.");
-        } else { console.warn(`Anexo ${attachmentId} não é R2 ou falta key.`); }
+        // Deletar do Supabase Storage se tiver path
+        if (attachment.storage_path) {
+            console.log(`[deleteAttachment Service] Removendo arquivo do Storage: ${attachment.storage_path}`);
+            const { error: storageError } = await supabase.storage
+              .from('petition-assets')
+              .remove([attachment.storage_path]);
+            
+            if (storageError) {
+                console.error(`[deleteAttachment Service] Erro ao excluir do Storage: ${storageError.message}`);
+                return {
+                    success: false,
+                    error: 'Erro ao excluir anexo do armazenamento'
+                };
+            }
+        }
 
-        const { error: deleteDbError } = await supabase.from('petition_attachments').delete().eq('id', attachmentId);
-        if (deleteDbError) throw new Error(`Erro DB delete: ${deleteDbError.message}`);
+        // Deletar do banco
+        const { error: deleteDbError } = await supabase
+          .from('petition_attachments')
+          .delete()
+          .eq('id', attachmentId);
+          
+        if (deleteDbError) {
+          throw new Error(`Erro DB delete: ${deleteDbError.message}`);
+        }
 
         toast.success(`Anexo "${attachment.file_name || 'ID: '+attachmentId}" excluído.`);
         return { success: true };
-     } catch (error) { /* ... tratamento erro ... */ }
-     return { success: false, error: 'Erro desconhecido' }; // Fallback
+     } catch (error) {
+        console.error('[deleteAttachment Service] Erro:', error);
+        return { success: false, error: 'Erro ao excluir anexo' };
+     }
 };
 
-
-// --- Exports (mantido) ---
 export const petitionAttachments = { uploadAttachment, getAttachments, deleteAttachment };
 export { uploadAttachment, getAttachments, deleteAttachment };
 export default { uploadAttachment, getAttachments, deleteAttachment };

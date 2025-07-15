@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Coins } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/contexts/AuthContext';
+import { useGoAuth } from '@/contexts/GoAuthContext';
 import { useTeamOwnership } from '@/hooks/useTeamOwnership';
 
 // Constantes para cache
@@ -18,8 +18,9 @@ interface TotalInvestmentProps {
 const TotalInvestment: React.FC<TotalInvestmentProps> = ({ className }) => {
   const [totalAmount, setTotalAmount] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const { user, teamId } = useAuth();
-  const { isOwner: isTeamOwner } = useTeamOwnership(teamId);
+  const { user } = useGoAuth();
+  // Por enquanto, assumimos que o usuário não tem equipe no GoAuthContext
+  const { isOwner: isTeamOwner } = useTeamOwnership(null);
 
   useEffect(() => {
     const fetchTotalInvestment = async () => {

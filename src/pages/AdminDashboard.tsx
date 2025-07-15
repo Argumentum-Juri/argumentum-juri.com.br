@@ -1,100 +1,56 @@
-
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { useAuth } from '@/contexts/AuthContext';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
-import { petitionService } from '@/services';
-import { adminService } from '@/services/adminService';
-import { userService } from '@/services/userService';
-import { Petition, PetitionStatus } from '@/types';
-import { Users, FileText, AlertCircle, CheckCircle, Clock, XCircle, Settings } from 'lucide-react';
+import { Users, FileText, Clock } from 'lucide-react';
+import { useAdminStats } from '@/hooks/useAdminStats';
+import { useAdminPetitions } from '@/hooks/useAdminPetitions';
 import AdminPetitionList from '@/components/admin/AdminPetitionList';
 
 const AdminDashboard = () => {
-  const { user } = useAuth();
-  const [petitions, setPetitions] = useState<Petition[]>([]);
-  const [userCount, setUserCount] = useState(0);
-  const [isLoading, setIsLoading] = useState(true);
-  const [statusCounts, setStatusCounts] = useState({
-    pending: 0,
-    review: 0,
-    in_review: 0,
-    approved: 0,
-    rejected: 0
+  const { stats, isLoading: statsLoading, error: statsError, isAdmin, refreshStats } = useAdminStats();
+  
+  // Buscar as 6 petições mais recentes para a seção "Petições Recentes"
+  const { 
+    petitions: recentPetitions, 
+    isLoading: petitionsLoading, 
+    error: petitionsError 
+  } = useAdminPetitions({
+    page: 1,
+    limit: 6,
+    sortBy: 'created_at',
+    sortDirection: 'desc'
   });
-  
-  useEffect(() => {
-    const fetchDashboardData = async () => {
-      setIsLoading(true);
-      try {
-        const allPetitionsResult = await petitionService.getAllPetitions();
-        const allPetitions = Array.isArray(allPetitionsResult) ? allPetitionsResult : [];
-        setPetitions(allPetitions);
-        
-        const counts = {
-          pending: 0,
-          review: 0,
-          in_review: 0,
-          approved: 0,
-          rejected: 0
-        };
-        
-        allPetitions.forEach(petition => {
-          if (counts.hasOwnProperty(petition.status)) {
-            counts[petition.status as keyof typeof counts]++;
-          }
-        });
-        
-        setStatusCounts(counts);
-        
-        const nonAdminUsersData = await userService.getAllNonAdminUsers();
-        const usersCount = nonAdminUsersData.count || 0;
-        setUserCount(usersCount);
-      } catch (error) {
-        console.error("Erro ao carregar dados do dashboard:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    
-    fetchDashboardData();
-  }, []);
-  
-  // Combine os status de revisão para exibição
-  const reviewCount = statusCounts.in_review + statusCounts.review;
-  const approvedCount = statusCounts.approved; 
-  const rejectedCount = statusCounts.rejected;
 
-  // Cores Definidas
-  const COLORS = {
-    pending: '#f59e0b',    // Laranja/Amarelo
-    review: '#6B7280',     // Cinza
-    approved: '#10b981',   // Verde (Emerald 500)
-    rejected: '#ef4444',   // Vermelho (Red 500)
-  };
+  // Verificar se não é admin
+  if (!isAdmin && !statsLoading) {
+    return (
+      <div className="container mx-auto py-6 px-4 sm:px-6 lg:px-8 h-full flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-destructive mb-4">Acesso Negado</h1>
+          <p className="text-muted-foreground">Você não tem permissão para acessar esta página.</p>
+        </div>
+      </div>
+    );
+  }
 
-  // Dados para o Gráfico de Pizza
-  const pieChartData = [
-    { name: 'Pendentes', value: statusCounts.pending, color: COLORS.pending },
-    { name: 'Em Revisão', value: reviewCount, color: COLORS.review },
-    { name: 'Aprovadas', value: approvedCount, color: COLORS.approved }, 
-    { name: 'Rejeitadas', value: rejectedCount, color: COLORS.rejected }  
-  ].filter(item => item.value > 0); // Filtra itens com valor 0 para não aparecerem
+  // Mostrar erro se houver
+  if (statsError && !statsLoading) {
+    return (
+      <div className="container mx-auto py-6 px-4 sm:px-6 lg:px-8 h-full flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-destructive mb-4">Erro</h1>
+          <p className="text-muted-foreground mb-4">{statsError.message}</p>
+          <Button onClick={refreshStats}>
+            Tentar novamente
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
-  // Definindo dados para o gráfico de barras (estava faltando esta definição)
-  const barChartData = [
-    { name: 'Pendentes', count: statusCounts.pending, color: COLORS.pending },
-    { name: 'Em Revisão', count: reviewCount, color: COLORS.review },
-    { name: 'Aprovadas', count: approvedCount, color: COLORS.approved }, 
-    { name: 'Rejeitadas', count: rejectedCount, color: COLORS.rejected }  
-  ].filter(item => item.count > 0); // Filtra barras com valor 0 se desejado
-  
-  const recentPetitions = petitions.slice(0, 5);
-  const totalPetitions = petitions.length;
-  
-  if (isLoading) {
+  if (statsLoading) {
     return (
       <div className="flex justify-center items-center py-20">
         <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full"></div>
@@ -102,10 +58,67 @@ const AdminDashboard = () => {
     );
   }
 
+  if (!stats) {
+    return (
+      <div className="container mx-auto py-6 px-4 sm:px-6 lg:px-8 h-full flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold mb-4">Nenhum dado disponível</h1>
+          <Button onClick={refreshStats}>
+            Recarregar
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // Cores Definidas
+  const COLORS = {
+    pending: '#f59e0b',    // Laranja/Amarelo
+    review: '#6B7280',     // Cinza
+    in_review: '#6B7280',  // Cinza
+    approved: '#10b981',   // Verde (Emerald 500)
+    rejected: '#ef4444',   // Vermelho (Red 500)
+  };
+
+  // Processar dados de distribuição por status
+  const distributionEntries = Object.entries(stats.distribution_by_status || {});
+  
+  // Combinar status de revisão
+  let reviewCount = 0;
+  const processedDistribution: Array<{ name: string; value: number; color: string }> = [];
+  
+  distributionEntries.forEach(([status, count]) => {
+    if (status === 'review' || status === 'in_review') {
+      reviewCount += Number(count);
+    } else {
+      const statusName = status === 'pending' ? 'Pendentes' :
+                        status === 'approved' ? 'Aprovadas' :
+                        status === 'rejected' ? 'Rejeitadas' : status;
+      
+      processedDistribution.push({
+        name: statusName,
+        value: Number(count),
+        color: COLORS[status as keyof typeof COLORS] || '#6B7280'
+      });
+    }
+  });
+
+  // Adicionar status de revisão combinado se houver
+  if (reviewCount > 0) {
+    processedDistribution.push({
+      name: 'Em Revisão',
+      value: reviewCount,
+      color: COLORS.review
+    });
+  }
+
+  // Filtrar entradas com valor 0 para os gráficos
+  const pieChartData = processedDistribution.filter(item => item.value > 0);
+  const barChartData = processedDistribution.filter(item => item.value > 0);
+
   return (
     <div className="container mx-auto py-10 px-4">
       <h1 className="text-3xl font-bold mb-8">Dashboard do Administrador</h1>
-
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <Card>
@@ -116,7 +129,7 @@ const AdminDashboard = () => {
           <CardContent>
             <div className="flex items-center">
               <FileText className="h-8 w-8 text-primary mr-4" />
-              <span className="text-3xl font-bold">{totalPetitions}</span>
+              <span className="text-3xl font-bold">{stats.total_petitions}</span>
             </div>
           </CardContent>
           <CardFooter>
@@ -134,7 +147,7 @@ const AdminDashboard = () => {
           <CardContent>
             <div className="flex items-center">
               <Users className="h-8 w-8 text-primary mr-4" />
-              <span className="text-3xl font-bold">{userCount}</span>
+              <span className="text-3xl font-bold">{stats.total_users}</span>
             </div>
           </CardContent>
           <CardFooter>
@@ -152,7 +165,7 @@ const AdminDashboard = () => {
           <CardContent>
             <div className="flex items-center">
               <Clock className="h-8 w-8 text-amber-500 mr-4" />
-              <span className="text-3xl font-bold">{statusCounts.pending}</span>
+              <span className="text-3xl font-bold">{stats.pending_petitions}</span>
             </div>
           </CardContent>
           <CardFooter>
@@ -164,117 +177,113 @@ const AdminDashboard = () => {
       </div>
       
       {/* Gráficos */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-10">
-        <Card className="col-span-1 shadow-sm">
-          <CardHeader>
-            <CardTitle>Distribuição por Status</CardTitle>
-            <CardDescription>Percentual de petições em cada status</CardDescription>
-          </CardHeader>
-          <CardContent className="h-80 pl-0 pr-4"> 
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                {/* Tooltip ANTES de Pie pode melhorar o hover */}
-                <Tooltip 
-                  contentStyle={{ borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}
-                  itemStyle={{ padding: '2px 0' }}
-                />
-                <Pie
-                  data={pieChartData} 
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  outerRadius={100} 
-                  innerRadius={50} // Cria um Donut Chart (opcional)
-                  fill="#8884d8" // Fill padrão (ignorado pelas Cells)
-                  dataKey="value"
-                  // Label customizado (opcional)
-                  label={({ cx, cy, midAngle, innerRadius, outerRadius, percent, index }) => {
-                     const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
-                     const x = cx + radius * Math.cos(-midAngle * (Math.PI / 180));
-                     const y = cy + radius * Math.sin(-midAngle * (Math.PI / 180));
-                     // Mostra percentual apenas se for > X% (ex: 5%)
-                     if ((percent * 100) < 5) return null; 
-                     return (
-                       <text x={x} y={y} fill="white" textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" fontSize="12px" fontWeight="bold">
-                         {`${(percent * 100).toFixed(0)}%`}
-                       </text>
-                     );
-                  }}
+      {pieChartData.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-10">
+          <Card className="col-span-1 shadow-sm">
+            <CardHeader>
+              <CardTitle>Distribuição por Status</CardTitle>
+              <CardDescription>Percentual de petições em cada status</CardDescription>
+            </CardHeader>
+            <CardContent className="h-80 pl-0 pr-4"> 
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Tooltip 
+                    contentStyle={{ borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}
+                    itemStyle={{ padding: '2px 0' }}
+                  />
+                  <Pie
+                    data={pieChartData} 
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    outerRadius={100} 
+                    innerRadius={50}
+                    fill="#8884d8"
+                    dataKey="value"
+                    label={({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
+                       const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
+                       const x = cx + radius * Math.cos(-midAngle * (Math.PI / 180));
+                       const y = cy + radius * Math.sin(-midAngle * (Math.PI / 180));
+                       if ((percent * 100) < 5) return null; 
+                       return (
+                         <text x={x} y={y} fill="white" textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" fontSize="12px" fontWeight="bold">
+                           {`${(percent * 100).toFixed(0)}%`}
+                         </text>
+                       );
+                    }}
+                  >
+                    {pieChartData.map((entry, index) => (
+                      <Cell 
+                        key={`cell-${index}`} 
+                        fill={entry.color}
+                        stroke="#fff"
+                        strokeWidth={1}
+                      />
+                    ))}
+                  </Pie>
+                  <Legend 
+                    iconType="circle" 
+                    iconSize={10} 
+                    wrapperStyle={{ paddingTop: '20px' }} 
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+          
+          <Card className="col-span-1 shadow-sm">
+            <CardHeader>
+              <CardTitle>Contagem por Status</CardTitle>
+              <CardDescription>Número total de petições por status</CardDescription>
+            </CardHeader>
+            <CardContent className="h-80">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart 
+                  data={barChartData} 
+                  margin={{ top: 5, right: 10, left: -10, bottom: 5 }} 
                 >
-                  {/* Mapeia os dados para Células, usando a COR definida em pieChartData */}
-                  {pieChartData.map((entry, index) => (
-                    <Cell 
-                      key={`cell-${index}`} 
-                      fill={entry.color} // <<< Garante que está usando a cor correta
-                      stroke="#fff" // Adiciona uma pequena borda branca (opcional)
-                      strokeWidth={1}
-                    />
-                  ))}
-                </Pie>
-                {/* Legenda customizada (opcional) */}
-                <Legend 
-                  iconType="circle" 
-                  iconSize={10} 
-                  wrapperStyle={{ paddingTop: '20px' }} 
-                />
-              </PieChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-        
-        <Card className="col-span-1 shadow-sm">
-          <CardHeader>
-            <CardTitle>Contagem por Status</CardTitle>
-            <CardDescription>Número total de petições por status</CardDescription>
-          </CardHeader>
-          <CardContent className="h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart 
-                data={barChartData} 
-                margin={{ top: 5, right: 10, left: -10, bottom: 5 }} 
-              >
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis 
-                  dataKey="name" 
-                  tick={{ fontSize: 12 }} 
-                  axisLine={false} 
-                  tickLine={false} 
-                />
-                <YAxis 
-                  allowDecimals={false} 
-                  tick={{ fontSize: 12 }} 
-                  axisLine={false} 
-                  tickLine={false} 
-                  width={30} 
-                />
-                <Tooltip 
-                  cursor={{ fill: 'rgba(200, 200, 200, 0.1)' }}
-                  contentStyle={{ borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }} 
-                />
-                <Bar 
-                  dataKey="count" 
-                  radius={[4, 4, 0, 0]} // Cantos arredondados no topo (opcional)
-                  maxBarSize={40} // Limita largura máxima da barra (opcional)
-                > 
-                  {/* Mapeia os dados para Células, usando a COR definida em barChartData */}
-                  {barChartData.map((entry, index) => (
-                    <Cell 
-                      key={`cell-${index}`} 
-                      fill={entry.color} // <<< Garante que está usando a cor correta
-                    /> 
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      </div>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis 
+                    dataKey="name" 
+                    tick={{ fontSize: 12 }} 
+                    axisLine={false} 
+                    tickLine={false} 
+                  />
+                  <YAxis 
+                    allowDecimals={false} 
+                    tick={{ fontSize: 12 }} 
+                    axisLine={false} 
+                    tickLine={false} 
+                    width={30} 
+                  />
+                  <Tooltip 
+                    cursor={{ fill: 'rgba(200, 200, 200, 0.1)' }}
+                    contentStyle={{ borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }} 
+                  />
+                  <Bar 
+                    dataKey="value" 
+                    radius={[4, 4, 0, 0]}
+                    maxBarSize={40}
+                  > 
+                    {barChartData.map((entry, index) => (
+                      <Cell 
+                        key={`cell-${index}`} 
+                        fill={entry.color}
+                      /> 
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
-      {/* Recent Petitions */}
+      {/* Recent Petitions - Agora usando dados reais */}
       <div className="mt-6">
         <AdminPetitionList
-          petitions={petitions.slice(0, 6)}
-          isLoading={isLoading}
+          petitions={recentPetitions}
+          isLoading={petitionsLoading}
           title="Petições Recentes"
           showViewAll={true}
         />

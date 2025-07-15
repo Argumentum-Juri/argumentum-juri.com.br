@@ -69,7 +69,7 @@ const RecentPetitionsList: React.FC<RecentPetitionsListProps> = ({
                     {petition.title}
                   </h4>
                   <p className="text-xs text-muted-foreground">
-                    {formatDate(petition.createdAt)}
+                    {formatDate(petition.created_at)}
                   </p>
                 </div>
                 <div className="flex items-center gap-2 mt-2 sm:mt-0 w-full sm:w-auto">

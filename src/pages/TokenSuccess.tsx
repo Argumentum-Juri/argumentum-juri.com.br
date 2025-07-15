@@ -1,100 +1,166 @@
 
 import React, { useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Check, Loader2, Wallet } from 'lucide-react';
+import { useSearchParams, Link } from 'react-router-dom';
+import { CheckCircle2, ArrowRight, CreditCard, Calendar } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { useAuth } from '@/contexts/AuthContext';
-import { tokenService } from '@/services/tokenService';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { supabase } from '@/integrations/supabase/client';
+import { useGoAuth } from '@/contexts/GoAuthContext';
 import { toast } from 'sonner';
 
 const TokenSuccess: React.FC = () => {
   const [searchParams] = useSearchParams();
   const sessionId = searchParams.get('session_id');
-  const { user } = useAuth();
-  const [currentTokens, setCurrentTokens] = useState<number>(0);
-  const [loading, setLoading] = useState(true);
+  const { getToken } = useGoAuth();
+  
+  const [verificationStatus, setVerificationStatus] = useState<'loading' | 'success' | 'error'>('loading');
+  const [verificationData, setVerificationData] = useState<any>(null);
 
   useEffect(() => {
-    const fetchTokens = async () => {
-      if (user) {
-        try {
-          setLoading(true);
-          
-          // Limpar o cache de tokens para garantir dados atualizados
-          tokenService.clearAllTokenCache();
-          
-          await new Promise(resolve => setTimeout(resolve, 2500));
-          // Buscar saldo atualizado após a compra
-          const tokens = await tokenService.getPersonalTokenBalance();
-          setCurrentTokens(tokens);
-          console.log("Tokens carregados após compra:", tokens);
-        } catch (error) {
-          console.error("Error fetching Tokens:", error);
-          toast.error("Erro ao carregar saldo de Tokens", {
-            description: "Tente atualizar a página ou voltar ao Dashboard"
-          });
-        } finally {
-          setLoading(false);
+    const verifyAndProcessSubscription = async () => {
+      if (!sessionId) {
+        setVerificationStatus('error');
+        return;
+      }
+
+      try {
+        const goAuthToken = getToken();
+        if (!goAuthToken) {
+          toast.error('Sessão inválida');
+          setVerificationStatus('error');
+          return;
         }
+
+        const { data, error } = await supabase.functions.invoke('verify-subscription-checkout', {
+          body: { sessionId },
+          headers: {
+            Authorization: `Bearer ${goAuthToken}`
+          }
+        });
+
+        if (error) {
+          console.error('Erro ao verificar checkout:', error);
+          setVerificationStatus('error');
+          return;
+        }
+
+        if (data?.success) {
+          setVerificationData(data);
+          setVerificationStatus('success');
+          toast.success('Assinatura processada com sucesso!');
+        } else {
+          setVerificationStatus('error');
+        }
+      } catch (error) {
+        console.error('Erro durante verificação:', error);
+        setVerificationStatus('error');
       }
     };
 
-    fetchTokens();
-  }, [user]); 
+    verifyAndProcessSubscription();
+  }, [sessionId, getToken]);
 
-  return (
-    <div className="py-6">
-      <div className="max-w-lg mx-auto px-4 sm:px-6">
-        <Button variant="ghost" size="sm" asChild className="mb-6">
-          <Link to="/dashboard">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Voltar ao Dashboard
-          </Link>
-        </Button>
+  if (verificationStatus === 'loading') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-legal-blue-50 to-legal-blue-100">
+        <Card className="w-full max-w-md mx-4">
+          <CardContent className="flex flex-col items-center justify-center p-8">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-legal-blue-600 mb-4"></div>
+            <p className="text-legal-text">Processando sua assinatura...</p>
+            <p className="text-sm text-legal-text-secondary mt-2">Isso pode levar alguns segundos</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
-        <Card className="border-green-200">
-          <CardContent className="pt-6">
-            <div className="flex flex-col items-center text-center">
-              <div className="h-12 w-12 rounded-full bg-green-100 flex items-center justify-center mb-4">
-                <Check className="h-6 w-6 text-green-600" />
-              </div>
-              <h1 className="text-2xl font-bold mb-2">Pagamento Confirmado!</h1>
-              <p className="text-muted-foreground mb-4">
-                Sua compra de Tokens foi processada com sucesso.
-              </p>
-
-              <div className="bg-muted p-4 rounded-lg w-full flex items-center justify-between mb-6">
-                <div className="flex items-center">
-                  <Wallet className="h-5 w-5 text-argumentum-gold mr-2" />
-                  <span className="font-medium">Saldo Atual:</span>
-                </div>
-                <span className="font-bold text-xl">
-                  {loading ? (
-                    <span className="flex items-center">
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Calculando...
-                    </span>
-                  ) : `${currentTokens} tokens`}
-                </span>
-              </div>
-
-              <div className="space-y-4 w-full">
-                <Button asChild className="w-full">
-                  <Link to="/petitions/new">
-                    Solicitar Nova Petição
-                  </Link>
-                </Button>
-                <Button asChild variant="outline" className="w-full">
-                  <Link to="/tokens/store">
-                    Voltar para a Loja
-                  </Link>
-                </Button>
-              </div>
+  if (verificationStatus === 'error') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-red-50 to-red-100">
+        <Card className="w-full max-w-md mx-4">
+          <CardContent className="flex flex-col items-center justify-center p-8">
+            <div className="rounded-full bg-red-100 p-3 mb-4">
+              <CreditCard className="h-8 w-8 text-red-600" />
+            </div>
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">Erro no Processamento</h2>
+            <p className="text-center text-gray-600 mb-6">
+              Houve um problema ao processar sua assinatura. Por favor, entre em contato com o suporte.
+            </p>
+            <div className="flex gap-3 w-full">
+              <Button asChild variant="outline" className="flex-1">
+                <Link to="/token-store">Voltar à Loja</Link>
+              </Button>
+              <Button asChild className="flex-1">
+                <Link to="/dashboard">Dashboard</Link>
+              </Button>
             </div>
           </CardContent>
         </Card>
       </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-legal-blue-50">
+      <Card className="w-full max-w-lg mx-4">
+        <CardHeader className="text-center">
+          <div className="mx-auto mb-4 rounded-full bg-green-100 p-3 w-fit">
+            <CheckCircle2 className="h-8 w-8 text-green-600" />
+          </div>
+          <CardTitle className="text-2xl font-bold text-gray-900">
+            Assinatura Ativada!
+          </CardTitle>
+          <CardDescription className="text-lg">
+            Sua assinatura foi processada com sucesso
+          </CardDescription>
+        </CardHeader>
+        
+        <CardContent className="space-y-6">
+          {verificationData && (
+            <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-gray-600">Tokens Creditados:</span>
+                <Badge variant="secondary" className="bg-green-100 text-green-800">
+                  {verificationData.tokensCredited} tokens
+                </Badge>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-gray-600">Status:</span>
+                <Badge className="bg-legal-blue-100 text-legal-blue-800">
+                  Ativa
+                </Badge>
+              </div>
+            </div>
+          )}
+          
+          <div className="bg-blue-50 rounded-lg p-4">
+            <div className="flex items-start gap-3">
+              <Calendar className="h-5 w-5 text-blue-600 mt-0.5" />
+              <div>
+                <h4 className="font-medium text-blue-900">Próximos Créditos</h4>
+                <p className="text-sm text-blue-700">
+                  Seus tokens serão creditados automaticamente todo mês na data da assinatura.
+                </p>
+              </div>
+            </div>
+          </div>
+          
+          <div className="flex gap-3">
+            <Button asChild variant="outline" className="flex-1">
+              <Link to="/token-store" className="flex items-center justify-center">
+                Gerenciar Assinatura
+              </Link>
+            </Button>
+            <Button asChild className="flex-1">
+              <Link to="/dashboard" className="flex items-center justify-center">
+                Ir ao Dashboard
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 };

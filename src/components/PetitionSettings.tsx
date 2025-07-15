@@ -4,10 +4,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/contexts/AuthContext";
+import { useGoAuth } from "@/contexts/GoAuthContext";
 import { SettingsProvider } from "@/contexts/SettingsContext";
 import { petitionSettingsService } from '@/services/petition/petitionSettingsService';
 import type { PetitionSettings as PetitionSettingsType } from '@/types/petitionSettings';
+import { Check, Loader2 } from "lucide-react";
 
 import LayoutSettings from './petition-settings/LayoutSettings';
 import FontSettings from './petition-settings/FontSettings';
@@ -15,9 +16,10 @@ import LogoSettings from './petition-settings/LogoSettings';
 import TemplateSettings from './petition-settings/TemplateSettings';
 
 const PetitionSettings: React.FC = () => {
-  const { user } = useAuth();
+  const { user } = useGoAuth();
   const { toast } = useToast();
   const [isSaving, setIsSaving] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
   const [settings, setSettings] = useState<Partial<PetitionSettingsType>>({
     user_id: user?.id || '',
     primary_color: "#0F3E73",
@@ -69,24 +71,43 @@ const PetitionSettings: React.FC = () => {
   };
 
   const handleSubmit = async () => {
-    if (!user?.id) return;
-    
-    // Garantir que o user_id está sempre atualizado antes de salvar
-    const settingsToSave = {
-      ...settings,
-      user_id: user.id
-    };
+    console.log('🚀 handleSubmit disparado', { settings, userId: user?.id });
+
+    if (!user?.id) {
+      toast({
+        variant: "destructive",
+        title: "Erro",
+        description: "Usuário não autenticado",
+      });
+      return;
+    }
     
     setIsSaving(true);
+    setJustSaved(false);
+    
     try {
-      await petitionSettingsService.saveSettings(settingsToSave);
+      const payload = {
+        ...settings,
+        user_id: user.id,
+      };
+      console.log('✨ Salvando configurações com payload:', payload);
+
+      await petitionSettingsService.saveSettings(payload);
+      
+      setJustSaved(true);
       
       toast({
         title: "Configurações salvas",
         description: "Suas configurações de petição foram salvas com sucesso",
       });
+
+      // Reset the success state after 2 seconds
+      setTimeout(() => {
+        setJustSaved(false);
+      }, 2000);
+      
     } catch (error) {
-      console.error('Erro ao salvar configurações:', error);
+      console.error('❌ Erro ao salvar configurações:', error);
       toast({
         variant: "destructive",
         title: "Erro",
@@ -139,8 +160,30 @@ const PetitionSettings: React.FC = () => {
             </Tabs>
 
             <div className="mt-8 flex justify-end">
-              <Button onClick={handleSubmit} disabled={isSaving}>
-                {isSaving ? 'Salvando...' : 'Salvar Configurações'}
+              <Button 
+                onClick={handleSubmit} 
+                disabled={isSaving}
+                className={`
+                  transition-all duration-300 min-w-[180px]
+                  ${justSaved 
+                    ? 'bg-green-600 hover:bg-green-700 animate-pulse' 
+                    : 'bg-primary hover:bg-primary/90'
+                  }
+                `}
+              >
+                {isSaving ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Salvando...
+                  </>
+                ) : justSaved ? (
+                  <>
+                    <Check className="mr-2 h-4 w-4" />
+                    Salvo com Sucesso!
+                  </>
+                ) : (
+                  'Salvar Configurações'
+                )}
               </Button>
             </div>
           </CardContent>

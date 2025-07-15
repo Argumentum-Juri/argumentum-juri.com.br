@@ -87,43 +87,46 @@ export const getSettingsForUser = async (userId?: string): Promise<PetitionSetti
   }
 };
 
-export const saveSettings = async (settings: Partial<PetitionSettings>): Promise<PetitionSettings> => {
+export const saveSettings = async (
+  settings: Partial<PetitionSettings>
+): Promise<PetitionSettings> => {
   try {
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData?.user?.id) {
+    // Use o user_id passado no objeto settings
+    const targetUserId = settings.user_id;
+    if (!targetUserId) {
       throw new Error("User not authenticated");
     }
 
-    // First check if settings exist for user
-    const { data: existingData } = await supabase
+    // Verifica se já existem configurações para esse usuário
+    const { data: existingData, error: fetchErr } = await supabase
       .from("petition_settings")
       .select("id")
-      .eq("user_id", userData.user.id)
+      .eq("user_id", targetUserId)
       .maybeSingle();
+
+    if (fetchErr) throw fetchErr;
 
     let result;
     if (existingData) {
-      // Update existing settings
+      // Atualiza configurações existentes
       const { data, error } = await supabase
         .from("petition_settings")
         .update(settings)
-        .eq("user_id", userData.user.id)
+        .eq("user_id", targetUserId)
         .select()
         .single();
-
       if (error) throw error;
       result = data;
     } else {
-      // Insert new settings
+      // Insere novas configurações
       const { data, error } = await supabase
         .from("petition_settings")
-        .insert({ 
-          ...settings, 
-          user_id: userData.user.id 
+        .insert({
+          ...settings,
+          user_id: targetUserId,
         })
         .select()
         .single();
-
       if (error) throw error;
       result = data;
     }
@@ -134,6 +137,7 @@ export const saveSettings = async (settings: Partial<PetitionSettings>): Promise
     throw error;
   }
 };
+
 
 // Add the updateSettings function needed by LogoSettings and TemplateSettings
 export const updateSettings = async (newSettings: Partial<PetitionSettings>): Promise<PetitionSettings> => {
@@ -292,6 +296,50 @@ export const removeLogo = async (userId: string): Promise<boolean> => {
   }
 };
 
+// Add the saveFileSettings function needed by SettingsContext
+export const saveFileSettings = async (params: {
+  fileType: 'logo' | 'letterhead_template' | 'petition_template';
+  user_id: string;
+  url: string;
+  originalFilename: string;
+}): Promise<PetitionSettings> => {
+  try {
+    const { fileType, user_id, url, originalFilename } = params;
+    
+    // Create the field mapping based on fileType
+    let settingsUpdate: Partial<PetitionSettings> = {};
+    
+    if (fileType === 'logo') {
+      settingsUpdate = {
+        logo_url: url,
+        logo_original_filename: originalFilename,
+        logo_storage_provider: 'cloudflare_r2' // Cloudflare R2 via Go API
+      };
+    } else if (fileType === 'letterhead_template') {
+      settingsUpdate = {
+        letterhead_template_url: url,
+        letterhead_template_original_filename: originalFilename,
+        letterhead_template_storage_provider: 'cloudflare_r2'
+      };
+    } else if (fileType === 'petition_template') {
+      settingsUpdate = {
+        petition_template_url: url,
+        petition_template_original_filename: originalFilename,
+        petition_template_storage_provider: 'cloudflare_r2'
+      };
+    }
+    
+    // Save the settings to database
+    return await saveSettings({
+      user_id,
+      ...settingsUpdate
+    });
+  } catch (error) {
+    console.error("Error in saveFileSettings:", error);
+    throw error;
+  }
+};
+
 export const petitionSettingsService = {
   getSettingsForUser,
   saveSettings,
@@ -300,7 +348,8 @@ export const petitionSettingsService = {
   deleteFile,
   updateSettings,
   uploadLogo,
-  removeLogo
+  removeLogo,
+  saveFileSettings
 };
 
 export default petitionSettingsService;

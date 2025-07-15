@@ -1,9 +1,10 @@
 
-import { supabase } from "@/integrations/supabase/client";
 import { Petition } from "./types";
 import { documentService } from "@/services/documentService";
+import { getGoAuthToken } from "@/contexts/GoAuthContext";
+import { goApiClient } from "@/lib/goApiClient";
 
-// Define the default petition cost
+// Define the default petition cost (mantido para referência no frontend)
 export const DEFAULT_PETITION_COST = 16;
 
 // Define interface for token validation result
@@ -29,23 +30,26 @@ export interface CreatePetitionParams {
   form_schema?: string | null;
 }
 
-// Function to validate tokens before creating a petition
+// Function to validate tokens before creating a petition (mantida para uso em UI)
 export const validateTokensForPetition = async (
   userId: string,
   teamId: string
 ): Promise<TokenValidationResult> => {
   try {
-    // Use a direct query instead of RPC for better TypeScript compatibility
-    const { data: tokenData, error: tokenError } = await supabase
-      .from('user_tokens')
-      .select('tokens')
-      .eq('user_id', userId)
-      .single();
+    console.log(`[validateTokensForPetition] 🔍 Validando tokens - User: ${userId}, Team: ${teamId}`);
     
-    if (tokenError) throw tokenError;
+    // Use Go API client for validation
+    const tokenResult = await goApiClient.getTeamTokenBalance(teamId);
     
-    const currentTeamTokens = tokenData?.tokens || 0;
+    if (tokenResult.error) {
+      console.error('[validateTokensForPetition] ❌ Erro ao buscar tokens da equipe:', tokenResult.error);
+      throw new Error(tokenResult.error);
+    }
+    
+    const currentTeamTokens = tokenResult.data?.tokens || 0;
     const tokenCost = DEFAULT_PETITION_COST;
+    
+    console.log(`[validateTokensForPetition] 💰 Saldo atual da equipe: ${currentTeamTokens}, Custo: ${tokenCost}`);
     
     return {
       hasEnoughTokens: currentTeamTokens >= tokenCost,
@@ -53,39 +57,33 @@ export const validateTokensForPetition = async (
       currentTeamTokens
     };
   } catch (error) {
-    console.error('Error validating tokens:', error);
+    console.error('[validateTokensForPetition] ❌ Erro na validação:', error);
     throw new Error('Failed to validate token balance');
   }
 };
 
 export const createPetition = async (
-  petitionData: CreatePetitionParams
+  petitionData: CreatePetitionParams,
+  userId?: string
 ): Promise<Petition> => {
   try {
-    const { data: authData } = await supabase.auth.getUser();
-    const userId = authData.user?.id;
+    console.log('[createPetition] 🚀 Iniciando criação de petição');
     
-    if (!userId) throw new Error('User not authenticated');
-    
+    // Get Go Auth token
+    const goAuthToken = getGoAuthToken();
+    if (!goAuthToken) {
+      console.error('[createPetition] ❌ Token Go Auth não encontrado');
+      throw new Error('Go Auth token not found');
+    }
+
     const teamId = petitionData.team_id;
-    if (!teamId) throw new Error('Team ID is required');
-    
-    // Validate tokens first (simplified for type safety)
-    const { data: tokenData, error: tokenError } = await supabase
-      .from('user_tokens')
-      .select('tokens')
-      .eq('user_id', userId)
-      .maybeSingle(); // Alterado de .single() para .maybeSingle()
-    
-    if (tokenError && tokenError.code !== 'PGRST116') throw tokenError;
-    
-    const currentTeamTokens = tokenData?.tokens || 0;
-    const tokensToDeduct = DEFAULT_PETITION_COST; // Renamed from tokenCost to tokensToDeduct
-    
-    if (currentTeamTokens < tokensToDeduct) {
-      throw new Error(`Insufficient tokens. You need ${tokensToDeduct} tokens but have ${currentTeamTokens}.`);
+    if (!teamId) {
+      console.error('[createPetition] ❌ Team ID é obrigatório');
+      throw new Error('Team ID is required');
     }
     
+    console.log(`[createPetition] 🔑 Using Go Auth token, Team: ${teamId}`);
+
     // Prepare the petition data
     const newPetition = {
       title: petitionData.title,
@@ -101,48 +99,44 @@ export const createPetition = async (
       form_type: petitionData.form_type || null,
       form_schema: petitionData.form_schema || null,
       team_id: teamId,
-      user_id: userId,
       status: 'pending' as const
     };
     
-    // Create the petition
-    const { data: petition, error } = await supabase
-      .from('petitions')
-      .insert(newPetition)
-      .select()
-      .single();
+    console.log('[createPetition] 📝 Criando petição via GoApiClient...');
     
-    if (error) throw error;
+    // Create the petition using the GoApiClient
+    // A Edge Function agora cuida da validação de tokens e débito automaticamente
+    const petitionResult = await goApiClient.createPetition(newPetition);
     
-    // Charge the team for the petition
-    const { error: chargeError } = await supabase.functions.invoke(
-      'charge-team-for-petition',
-      {
-        body: {
-          teamId, // Parâmetro correto
-          petitionId: petition.id,
-          tokensToDeduct, // Parâmetro correto
-          chargedByUserId: userId // Parâmetro correto
-        }
-      }
-    );
-    
-    if (chargeError) {
-      console.error('Error charging team for petition:', chargeError);
-      // Continue anyway, as the petition is already created
+    if (petitionResult.error) {
+      console.error('[createPetition] ❌ Erro ao criar petição:', petitionResult.error);
+      throw new Error(petitionResult.error);
     }
+    
+    const petition = petitionResult.data;
+    if (!petition?.id) {
+      console.error('[createPetition] ❌ Petição criada mas ID não retornado:', petitionResult);
+      throw new Error('Petition created but ID not returned');
+    }
+    
+    console.log(`[createPetition] ✅ Petição criada: ${petition.id} (tokens debitados automaticamente pela Edge Function)`);
     
     // After creating the petition, save the format settings for it
     try {
-      await documentService.savePetitionFormatSettings(petition.id, userId);
+      console.log('[createPetition] 💾 Salvando configurações de formato...');
+      if (petition.user_id) {
+        await documentService.savePetitionFormatSettings(petition.id, petition.user_id);
+        console.log('[createPetition] ✅ Configurações de formato salvas');
+      }
     } catch (formatError) {
-      console.error('Error saving format settings:', formatError);
+      console.error('[createPetition] ⚠️ Erro ao salvar configurações de formato:', formatError);
       // We don't throw here to avoid blocking petition creation
     }
     
+    console.log('[createPetition] 🎉 Petição criada com sucesso!');
     return petition as Petition;
   } catch (error) {
-    console.error('Error in createPetition:', error);
+    console.error('[createPetition] 💥 Erro geral na criação:', error);
     throw error;
   }
 };

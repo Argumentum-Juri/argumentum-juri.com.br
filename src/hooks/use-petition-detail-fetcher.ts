@@ -2,11 +2,11 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { fetcher } from '@/lib/fetcher';
-import { useAuth } from '@/contexts/AuthContext';
+import { useGoAuth } from '@/contexts/GoAuthContext';
 
 export function usePetitionDetailFetcher() {
   const { id } = useParams<{ id: string }>();
-  const { authInitialized, user } = useAuth();
+  const { authInitialized, user } = useGoAuth();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

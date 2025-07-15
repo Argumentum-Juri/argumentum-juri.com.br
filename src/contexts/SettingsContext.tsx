@@ -1,10 +1,10 @@
 
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
-import { useAuth } from './AuthContext';
-import petitionSettingsService from '@/services/petitionSettingsService';
+import { useGoAuth } from './GoAuthContext';
+import { petitionSettingsService } from '@/services/petition/petitionSettingsService';
 import { PetitionSettings } from '@/types/petitionSettings';
 import { toast } from 'sonner';
-import { supabase } from '@/integrations/supabase/client';
+import { goApiClient } from '@/lib/goApiClient';
 
 interface SettingsContextType {
   settings: Partial<PetitionSettings> | null;
@@ -19,7 +19,7 @@ interface SettingsContextType {
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
 
 export const SettingsProvider = ({ children }: { children: ReactNode }) => {
-  const { user } = useAuth();
+  const { user } = useGoAuth();
   const [settings, setSettings] = useState<Partial<PetitionSettings> | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -50,9 +50,11 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
   const updateSettings = async (newSettings: Partial<PetitionSettings>) => {
     if (!user?.id) {
       setError('User not authenticated');
+      toast.error('Usuário não autenticado');
       return;
     }
 
+    console.log('🔄 [SettingsContext] Iniciando updateSettings com:', newSettings);
     setIsLoading(true);
     try {
       // Prepare settings object with user_id always set
@@ -65,144 +67,155 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
       if (newSettings.fileObj) {
         const file = newSettings.fileObj as File;
         
-        // Use the Edge Function to upload to R2
-        const { data, error } = await supabase.functions.invoke('r2-upload', {
-          body: {
-            fileName: file.name,
-            contentType: file.type,
-            fileSize: file.size,
-            folder: `logos/${user.id}`
-          }
-        });
+        console.log('📁 [SettingsContext] Fazendo upload do logo...');
+        const uploadResult = await goApiClient.uploadDocument(file, 'logo');
         
-        if (error) throw error;
+        console.log('📁 [SettingsContext] Resultado do upload:', uploadResult);
         
-        if (!data || !data.uploadUrl || !data.key) {
-          throw new Error("Failed to get upload URL");
+        if (uploadResult.error) {
+          console.error('❌ [SettingsContext] Erro no upload:', uploadResult.error);
+          throw new Error(uploadResult.error);
         }
         
-        // Upload the file using the pre-signed URL
-        const uploadResult = await fetch(data.uploadUrl, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': file.type
-          },
-          body: file
-        });
-        
-        if (!uploadResult.ok) {
-          throw new Error(`Upload failed: ${uploadResult.statusText}`);
+        if (!uploadResult.data?.url) {
+          console.error('❌ [SettingsContext] Upload retornou sem URL válida');
+          throw new Error("Upload failed - no valid URL returned");
         }
         
-        // Update settings to include the R2 key and storage provider
-        updatedSettings.logo_r2_key = data.key;
-        updatedSettings.logo_storage_provider = 'r2';
-        updatedSettings.logo_url = `${data.publicUrl}`;
-        updatedSettings.logo_original_filename = file.name;
+        console.log('✅ [SettingsContext] Upload bem-sucedido:', uploadResult.data);
         
-        // Remove the file object as it's not needed anymore
-        delete updatedSettings.fileObj;
+        // Use the new saveFileSettings function
+        const savedSettings = await (petitionSettingsService.saveFileSettings as any)({
+          fileType: 'logo',
+          user_id: user.id,
+          url: uploadResult.data.url,
+          originalFilename: uploadResult.data.filename,
+          r2_key: uploadResult.data.r2_key,
+          storage_provider: uploadResult.data.storage_provider
+        });
+        
+        console.log('✅ [SettingsContext] Logo settings saved:', savedSettings);
+        
+        // Update local state
+        setSettings(prevSettings => ({
+          ...prevSettings,
+          ...savedSettings
+        }));
+        
+        setError(null);
+        toast.success('Logo salvo com sucesso!');
+        return;
       }
       
-      // Handle file upload for letterhead
+      // Handle file upload for letterhead - use consistent 'letterhead' fileType
       if (newSettings.letterheadFileObj) {
         const file = newSettings.letterheadFileObj as File;
         
-        // Use the Edge Function to upload to R2
-        const { data, error } = await supabase.functions.invoke('r2-upload', {
-          body: {
-            fileName: file.name,
-            contentType: file.type,
-            fileSize: file.size,
-            folder: `letterheads/${user.id}`
-          }
-        });
+        console.log('📁 [SettingsContext] Fazendo upload do papel timbrado...');
+        const uploadResult = await goApiClient.uploadDocument(file, 'letterhead');
         
-        if (error) throw error;
+        console.log('📁 [SettingsContext] Resultado do upload letterhead:', uploadResult);
         
-        if (!data || !data.uploadUrl || !data.key) {
-          throw new Error("Failed to get upload URL for letterhead");
+        if (uploadResult.error) {
+          console.error('❌ [SettingsContext] Erro no upload letterhead:', uploadResult.error);
+          throw new Error(uploadResult.error);
         }
         
-        // Upload the file using the pre-signed URL
-        const uploadResult = await fetch(data.uploadUrl, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': file.type
-          },
-          body: file
-        });
-        
-        if (!uploadResult.ok) {
-          throw new Error(`Upload failed: ${uploadResult.statusText}`);
+        if (!uploadResult.data?.url) {
+          console.error('❌ [SettingsContext] Upload letterhead retornou sem URL válida');
+          throw new Error("Letterhead upload failed - no valid URL returned");
         }
         
-        // Update settings to include the R2 key and storage provider
-        updatedSettings.letterhead_template_r2_key = data.key;
-        updatedSettings.letterhead_template_storage_provider = 'r2';
-        updatedSettings.letterhead_template_url = `${data.publicUrl}`;
-        updatedSettings.letterhead_template_original_filename = file.name;
+        console.log('✅ [SettingsContext] Upload letterhead bem-sucedido:', uploadResult.data);
         
-        // Remove the file object as it's not needed anymore
-        delete updatedSettings.letterheadFileObj;
+        // Use the new saveFileSettings function
+        const savedSettings = await (petitionSettingsService.saveFileSettings as any)({
+          fileType: 'letterhead_template',
+          user_id: user.id,
+          url: uploadResult.data.url,
+          originalFilename: uploadResult.data.filename,
+          r2_key: uploadResult.data.r2_key,
+          storage_provider: uploadResult.data.storage_provider
+        });
+        
+        console.log('✅ [SettingsContext] Letterhead settings saved:', savedSettings);
+        
+        // Update local state
+        setSettings(prevSettings => ({
+          ...prevSettings,
+          ...savedSettings
+        }));
+        
+        setError(null);
+        toast.success('Papel timbrado salvo com sucesso!');
+        return;
       }
       
-      // Handle file upload for template
+      // Handle file upload for template - use consistent 'template' fileType
       if (newSettings.templateFileObj) {
         const file = newSettings.templateFileObj as File;
         
-        // Use the Edge Function to upload to R2
-        const { data, error } = await supabase.functions.invoke('r2-upload', {
-          body: {
-            fileName: file.name,
-            contentType: file.type,
-            fileSize: file.size,
-            folder: `templates/${user.id}`
-          }
-        });
+        console.log('📁 [SettingsContext] Fazendo upload do template...');
+        const uploadResult = await goApiClient.uploadDocument(file, 'template');
         
-        if (error) throw error;
+        console.log('📁 [SettingsContext] Resultado do upload template:', uploadResult);
         
-        if (!data || !data.uploadUrl || !data.key) {
-          throw new Error("Failed to get upload URL for template");
+        if (uploadResult.error) {
+          console.error('❌ [SettingsContext] Erro no upload template:', uploadResult.error);
+          throw new Error(uploadResult.error);
         }
         
-        // Upload the file using the pre-signed URL
-        const uploadResult = await fetch(data.uploadUrl, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': file.type
-          },
-          body: file
-        });
-        
-        if (!uploadResult.ok) {
-          throw new Error(`Upload failed: ${uploadResult.statusText}`);
+        if (!uploadResult.data?.url) {
+          console.error('❌ [SettingsContext] Upload template retornou sem URL válida');
+          throw new Error("Template upload failed - no valid URL returned");
         }
         
-        // Update settings to include the R2 key and storage provider
-        updatedSettings.petition_template_r2_key = data.key;
-        updatedSettings.petition_template_storage_provider = 'r2';
-        updatedSettings.petition_template_url = `${data.publicUrl}`;
-        updatedSettings.petition_template_original_filename = file.name;
+        console.log('✅ [SettingsContext] Upload template bem-sucedido:', uploadResult.data);
         
-        // Remove the file object as it's not needed anymore
-        delete updatedSettings.templateFileObj;
+        // Use the new saveFileSettings function
+        const savedSettings = await (petitionSettingsService.saveFileSettings as any)({
+          fileType: 'petition_template',
+          user_id: user.id,
+          url: uploadResult.data.url,
+          originalFilename: uploadResult.data.filename,
+          r2_key: uploadResult.data.r2_key,
+          storage_provider: uploadResult.data.storage_provider
+        });
+        
+        console.log('✅ [SettingsContext] Template settings saved:', savedSettings);
+        
+        // Update local state
+        setSettings(prevSettings => ({
+          ...prevSettings,
+          ...savedSettings
+        }));
+        
+        setError(null);
+        toast.success('Template salvo com sucesso!');
+        return;
       }
 
-      // Save to database
-      await petitionSettingsService.saveSettings(updatedSettings);
+      // Save regular settings (no file upload)
+      console.log('💾 [SettingsContext] Salvando configurações regulares no banco:', updatedSettings);
+      const savedSettings = await petitionSettingsService.saveSettings(updatedSettings);
+      console.log('✅ [SettingsContext] Configurações salvas:', savedSettings);
       
       // Update local state
       setSettings(prevSettings => ({
         ...prevSettings,
-        ...updatedSettings
+        ...savedSettings
       }));
       
       setError(null);
+      toast.success('Configurações salvas com sucesso!');
+      console.log('🎉 [SettingsContext] UpdateSettings concluído com sucesso');
     } catch (err) {
-      console.error('Error updating settings:', err);
-      setError('Failed to update settings');
+      console.error('❌ [SettingsContext] Error updating settings:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to update settings';
+      setError(errorMessage);
+      toast.error('Erro ao salvar configurações', {
+        description: errorMessage,
+      });
       throw err;
     } finally {
       setIsLoading(false);
@@ -210,38 +223,28 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const removeLogo = async () => {
-    if (!user?.id || !settings?.logo_r2_key) {
+    if (!user?.id || !settings?.logo_url) {
       return;
     }
 
     setIsLoading(true);
     try {
-      // Delete the file from R2
-      if (settings.logo_r2_key) {
-        const { error } = await supabase.functions.invoke('r2-delete', {
-          body: { key: settings.logo_r2_key }
-        });
-        
-        if (error) throw error;
-      }
-      
-      // Update the database
+      // Delete via Go API (implementation will depend on backend)
+      // For now, just update the database
       const updatedSettings = {
-        user_id: user.id,
         logo_url: null,
-        logo_r2_key: null,
-        logo_storage_provider: null,
         logo_original_filename: null
       };
       
-      await petitionSettingsService.saveSettings(updatedSettings);
+      await petitionSettingsService.saveSettings({
+        user_id: user.id,
+        ...updatedSettings
+      });
       
       // Update local state
       setSettings(prevSettings => ({
         ...prevSettings,
         logo_url: null,
-        logo_r2_key: null,
-        logo_storage_provider: null,
         logo_original_filename: null
       }));
       
@@ -256,38 +259,27 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const removeLetterhead = async () => {
-    if (!user?.id || !settings?.letterhead_template_r2_key) {
+    if (!user?.id || !settings?.letterhead_template_url) {
       return;
     }
 
     setIsLoading(true);
     try {
-      // Delete the file from R2
-      if (settings.letterhead_template_r2_key) {
-        const { error } = await supabase.functions.invoke('r2-delete', {
-          body: { key: settings.letterhead_template_r2_key }
-        });
-        
-        if (error) throw error;
-      }
-      
-      // Update the database
+      // Delete via Go API (implementation will depend on backend)
       const updatedSettings = {
-        user_id: user.id,
         letterhead_template_url: null,
-        letterhead_template_r2_key: null,
-        letterhead_template_storage_provider: null,
         letterhead_template_original_filename: null
       };
       
-      await petitionSettingsService.saveSettings(updatedSettings);
+      await petitionSettingsService.saveSettings({
+        user_id: user.id,
+        ...updatedSettings
+      });
       
       // Update local state
       setSettings(prevSettings => ({
         ...prevSettings,
         letterhead_template_url: null,
-        letterhead_template_r2_key: null,
-        letterhead_template_storage_provider: null,
         letterhead_template_original_filename: null
       }));
       
@@ -302,38 +294,27 @@ export const SettingsProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const removeTemplate = async () => {
-    if (!user?.id || !settings?.petition_template_r2_key) {
+    if (!user?.id || !settings?.petition_template_url) {
       return;
     }
 
     setIsLoading(true);
     try {
-      // Delete the file from R2
-      if (settings.petition_template_r2_key) {
-        const { error } = await supabase.functions.invoke('r2-delete', {
-          body: { key: settings.petition_template_r2_key }
-        });
-        
-        if (error) throw error;
-      }
-      
-      // Update the database
+      // Delete via Go API (implementation will depend on backend)
       const updatedSettings = {
-        user_id: user.id,
         petition_template_url: null,
-        petition_template_r2_key: null,
-        petition_template_storage_provider: null,
         petition_template_original_filename: null
       };
       
-      await petitionSettingsService.saveSettings(updatedSettings);
+      await petitionSettingsService.saveSettings({
+        user_id: user.id,
+        ...updatedSettings
+      });
       
       // Update local state
       setSettings(prevSettings => ({
         ...prevSettings,
         petition_template_url: null,
-        petition_template_r2_key: null,
-        petition_template_storage_provider: null,
         petition_template_original_filename: null
       }));
       

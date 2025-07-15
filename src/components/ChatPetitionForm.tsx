@@ -1,10 +1,10 @@
 
 // src/components/ChatPetitionForm.tsx
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, ArrowRight, Coins, AlertCircle } from 'lucide-react';
-import { useAuth } from '@/contexts/AuthContext';
+import { useGoAuth } from '@/contexts/GoAuthContext';
 import { Question } from '@/types/petition-form';
 import { QuestionRenderer } from './petition-form/QuestionRenderer';
 import { PetitionSummary } from './petition-form/PetitionSummary';
@@ -16,14 +16,30 @@ import { toast } from 'sonner';
 import { DEFAULT_PETITION_COST } from '@/services/petition';
 import { DocumentInfo } from '@/types/documentInfo';
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { useTeams } from '@/hooks/useTeams';
 
 interface ChatPetitionFormProps {
   tokenCost?: number; 
 }
 
 const ChatPetitionForm: React.FC<ChatPetitionFormProps> = ({ tokenCost = DEFAULT_PETITION_COST }) => {
-  const { teamId, teamLoading } = useAuth();
+  const { user } = useGoAuth();
   const navigate = useNavigate();
+  
+  // Obter equipes do usuário
+  const { teams: hookTeams, isLoading: hookLoading } = useTeams();
+  const [teamId, setTeamId] = useState<string | null>(null);
+
+  // Selecionar automaticamente a primeira equipe quando carregada
+  useEffect(() => {
+    if (!hookLoading && hookTeams && hookTeams.length > 0) {
+      const firstTeam = hookTeams[0];
+      const teamIdToUse = firstTeam?.teams?.id || firstTeam?.team_id || firstTeam?.id;
+      if (teamIdToUse && !teamId) {
+        setTeamId(teamIdToUse);
+      }
+    }
+  }, [hookTeams, hookLoading, teamId]);
 
   // Use the correct hook for chat-based form
   const {
@@ -76,13 +92,13 @@ const ChatPetitionForm: React.FC<ChatPetitionFormProps> = ({ tokenCost = DEFAULT
       }
     };
     
-    if (!teamLoading) {
+    if (!hookLoading) {
         verifyTeamTokens();
     }
-  }, [showingSummary, teamId, tokenCost, teamLoading]);
+  }, [showingSummary, teamId, tokenCost, hookLoading]);
 
   const renderCurrentQuestion = (): JSX.Element | null => {
-    if (teamLoading && !currentQuestion && !showingSummary) {
+    if (hookLoading && !currentQuestion && !showingSummary) {
         return (
             <Card className="w-full max-w-3xl mx-auto shadow-lg">
                 <CardContent className="pt-6 pb-6 text-center">
@@ -93,7 +109,7 @@ const ChatPetitionForm: React.FC<ChatPetitionFormProps> = ({ tokenCost = DEFAULT
     }
     
     // Se não há equipe após o carregamento, e não estamos mostrando o sumário (que pode ter sido alcançado antes)
-    if (!teamId && !teamLoading && !showingSummary) { 
+    if (!teamId && !hookLoading && !showingSummary) { 
         return (
             <Card className="w-full max-w-3xl mx-auto shadow-lg border-destructive/50">
                 <CardContent className="pt-6 pb-6 text-center">
@@ -128,8 +144,8 @@ const ChatPetitionForm: React.FC<ChatPetitionFormProps> = ({ tokenCost = DEFAULT
     if (!currentQuestion) {
         // Este estado pode ocorrer brevemente se activeQuestions ainda não foi populado
         // ou se o formulário for renderizado sem um teamId válido inicialmente.
-        if (!teamId && !teamLoading) return null; // Já tratado acima
-        if (activeQuestions.length === 0 && !teamLoading) {
+        if (!teamId && !hookLoading) return null; // Já tratado acima
+        if (activeQuestions.length === 0 && !hookLoading) {
             return <p className="text-center text-muted-foreground">Nenhuma pergunta disponível para esta configuração ou equipe.</p>;
         }
         return <p className="text-center">Carregando pergunta...</p>;

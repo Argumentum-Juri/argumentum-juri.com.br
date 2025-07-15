@@ -13,8 +13,7 @@ import {
   LogOut,
   ChevronRight
 } from 'lucide-react';
-import { useAuth } from '@/contexts/AuthContext';
-import { useTeamOwnership } from '@/hooks/useTeamOwnership';
+import { useGoAuth } from '@/contexts/GoAuthContext';
 import { Logo } from "@/components/ui/Logo";
 
 interface SidebarNavProps extends React.HTMLAttributes<HTMLElement> {
@@ -30,8 +29,7 @@ interface SidebarNavProps extends React.HTMLAttributes<HTMLElement> {
 const SidebarNav = ({ className, items: propItems, ...props }: SidebarNavProps) => {
   const { pathname } = useLocation();
   const navigate = useNavigate();
-  const { user, signOut, teamId } = useAuth();
-  const { isOwner: isTeamOwner } = useTeamOwnership(teamId);
+  const { user, signOut } = useGoAuth();
   
   const defaultItems = [
     {
@@ -56,7 +54,7 @@ const SidebarNav = ({ className, items: propItems, ...props }: SidebarNavProps) 
       href: "/tokens",
       title: "Loja de Tokens",
       icon: <Coins className="h-5 w-5 mr-2" />,
-      shown: isTeamOwner, // Mostrar apenas para proprietários de equipes
+      shown: true, // Removida a restrição de admin
     },
     {
       href: "/stats",
