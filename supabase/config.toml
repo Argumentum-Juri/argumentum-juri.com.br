@@ -1,117 +1,111 @@
-
-# A string used to distinguish different Supabase projects on the same host. Defaults to the working
-# directory name when running `supabase init`.
 project_id = "mefgswdpeellvaggvttc"
-org_id = "36879"
+
+# Definição de buckets R2 que a função pode usar:
+[[r2]]
+# nome do binding que vai aparecer em `env`
+binding = "ARGUMENTUM"
+# nome exato do bucket R2 no painel da Cloudflare
+bucket_name = "argumentum"
 
 [api]
-# Port to use for the API URL.
+enabled = true
 port = 54321
-# Schemas to expose in your API. Tables, views and stored procedures in this schema will get API
-# endpoints. public and storage are always included.
-schemas = ["public", "storage"]
-# Extra schemas to add to the search_path of every request. public is always included.
+schemas = ["public", "graphql_public"]
 extra_search_path = ["public", "extensions"]
-# The maximum number of rows returns from a view, table, or stored procedure. Limits payload size
-# for accidental or malicious requests.
 max_rows = 1000
 
-[functions]
-[functions.team-invite-email]
-verify_jwt = true
+[db]
+port = 54322
 
-[functions.analytics]
+[db.pooler]
+enabled = false
+port = 54329
+pool_mode = "transaction"
+default_pool_size = 20
+max_client_conn = 100
+
+[realtime]
+enabled = true
+ip_version = "ipv4"
+
+[studio]
+enabled = true
+port = 54323
+api_url = "http://127.0.0.1:54321"
+
+[inbucket]
+enabled = true
+port = 54324
+
+[storage]
+enabled = true
+file_size_limit = "50MiB"
+image_transformation = { enabled = true }
+
+[auth]
+enabled = true
+site_url = "http://127.0.0.1:3000"
+additional_redirect_urls = ["https://lovable.dev"]
+jwt_expiry = 3600
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+double_confirm_changes = true
+enable_confirmations = false
+
+[edge_functions]
+enabled = true
+
+[functions]
+enabled = true
+
+[functions.api-auth]
 verify_jwt = false
 
+[functions.api-petitions]
+verify_jwt = false
+
+[functions.api-profile]
+verify_jwt = false
+
+[functions.api-teams]
+verify_jwt = false
+
+[functions.api-documents]
+verify_jwt = false
+
+[functions.upload-document]
+verify_jwt = true
+
+[functions.get-user-token-balance]
+verify_jwt = false
+
+# Desabilita JWT para o Stripe webhook
 [functions.webhook-stripe]
 verify_jwt = false
 
-[functions.token-checkout]
+# Debug webhook sem JWT
+[functions.webhook-stripe-debug]
 verify_jwt = false
+
+# Sync stripe subscription sem JWT automático
+[functions.sync-stripe-subscription]
+verify_jwt = false
+
+# Manual token verification com JWT
+[functions.manual-token-verification]
+verify_jwt = true
+
+[functions.verify-payment]
+verify_jwt = true
 
 [functions.subscription-checkout]
 verify_jwt = false
 
-[functions.subscription-details]
+[functions.verify-subscription-checkout]
 verify_jwt = false
 
-[functions.stripe-portal]
+[functions.check-subscription-status]
 verify_jwt = false
 
-[functions.process-monthly-renewals]
-verify_jwt = false
-
-[functions.r2-upload]
-verify_jwt = false
-public_access = true
-
-[functions.r2-delete]
-verify_jwt = false
-public_access = true
-
-[functions.r2-get-signed-url]
-verify_jwt = false
-public_access = true
-
-[functions.get-team-token-balance]
-verify_jwt = false
-
-[functions.charge-team-for-petition]
-verify_jwt = false
-  
-[db]
-# Port to use for the local database URL.
-port = 54322
-# The database major version to use. This has to be the same as your remote database's. Run `SHOW
-# server_version;` on the remote database to check.
-major_version = 15
-
-[studio]
-# Port to use for Supabase Studio.
-port = 54323
-
-# Email testing server. Emails sent with the local dev setup are not actually sent - rather, they
-# are monitored, and you can view the emails that would have been sent from the web interface.
-[inbucket]
-# Port to use for the email testing server web interface.
-port = 54324
-smtp_port = 54325
-pop3_port = 54326
-
-[storage]
-# The maximum file size allowed (e.g. "5MB", "500KB").
-file_size_limit = "50MiB"
-
-[auth]
-# The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
-# in emails.
-site_url = "http://localhost:3000"
-# A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = ["https://localhost:3000"]
-# How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 seconds (one
-# week).
-jwt_expiry = 3600
-# Allow/disallow new user signups to your project.
-enable_signup = true
-
-[auth.email]
-# Allow/disallow new user signups via email to your project.
-enable_signup = true
-# If enabled, a user will be required to confirm any email change on both the old, and new email
-# addresses. If disabled, only the new email is required to confirm.
-double_confirm_changes = true
-# If enabled, users need to confirm their email address before signing in.
-enable_confirmations = false
-
-# Use an external OAuth provider. The full list of providers are: `apple`, `azure`, `bitbucket`,
-# `discord`, `facebook`, `github`, `gitlab`, `google`, `keycloak`, `linkedin`, `notion`, `twitch`,
-# `twitter`, `slack`, `spotify`, `workos`, `zoom`.
-[auth.external.apple]
-enabled = false
-client_id = ""
-secret = ""
-# Overrides the default auth redirectUrl.
-redirect_uri = ""
-# Overrides the default auth provider URL. Used to support self-hosted gitlab, single-tenant Azure,
-# or any other third-party OIDC providers.
-url = ""

@@ -1,7 +1,6 @@
-
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@12.5.0?target=deno";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
+import { verifyGoToken } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -22,26 +21,20 @@ serve(async (req) => {
   try {
     logStep("Function started");
     
-    // Verificar autenticação
-    const supabaseClient = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_ANON_KEY") ?? ""
-    );
-    
+    // Verificar autenticação usando GoAuth
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
       throw new Error("No authorization header");
     }
 
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser(
-      authHeader.replace("Bearer ", "")
-    );
-
-    if (userError || !user) {
-      throw new Error("User not authenticated");
+    const token = authHeader.replace("Bearer ", "");
+    const payload = await verifyGoToken(token);
+    
+    if (!payload) {
+      throw new Error("Invalid token");
     }
     
-    logStep("User authenticated", { userId: user.id, email: user.email });
+    logStep("User authenticated", { userId: payload.sub, email: payload.email });
 
     // Inicializar Stripe
     const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "", {
@@ -50,7 +43,7 @@ serve(async (req) => {
 
     // Buscar cliente do Stripe
     const customers = await stripe.customers.list({
-      email: user.email,
+      email: payload.email,
       limit: 1,
     });
 
@@ -65,7 +58,7 @@ serve(async (req) => {
     logStep("Found Stripe customer", { customerId: customers.data[0].id });
 
     const origin = req.headers.get("origin") || "http://localhost:3000";
-    const returnUrl = `${origin}/tokens/store`;
+    const returnUrl = `${origin}/tokens`;
     
     logStep("Creating billing portal session", { returnUrl });
 

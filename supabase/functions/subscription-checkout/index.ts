@@ -1,145 +1,126 @@
-
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.38.4'
-import Stripe from 'https://esm.sh/stripe@12.18.0?target=deno'
+import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import Stripe from "https://esm.sh/stripe@14.21.0";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { verifyGoToken } from "../_shared/auth.ts";
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+const logStep = (step: string, details?: any) => {
+  const detailsStr = details ? ` - ${JSON.stringify(details)}` : '';
+  console.log(`[SUBSCRIPTION-CHECKOUT] ${step}${detailsStr}`);
+};
 
 serve(async (req) => {
-  // Handle CORS preflight requests
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    // Create a Supabase client with the Auth context of the logged in user
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      {
-        global: {
-          headers: { Authorization: req.headers.get('Authorization')! },
-        },
-      }
-    )
+    logStep("Function started");
 
-    // Get the current user
-    const {
-      data: { user },
-      error: userError,
-    } = await supabaseClient.auth.getUser()
-
-    if (userError || !user) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 401,
-      })
+    // Verificar autenticação usando GoAuth
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      throw new Error("No authorization header");
     }
 
-    // Parse the request body
-    const { priceId, planName, billingType, userId } = await req.json()
+    const token = authHeader.replace("Bearer ", "");
+    const payload = await verifyGoToken(token);
+    
+    if (!payload) {
+      throw new Error("Invalid token");
+    }
+    
+    logStep("User authenticated", { userId: payload.sub, email: payload.email });
 
-    if (!priceId) {
-      return new Response(JSON.stringify({ error: 'Price ID is required' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 400,
-      })
+    const { priceId, planName, billingType, planId } = await req.json();
+    
+    if (!priceId || !planName || !billingType || !planId) {
+      throw new Error("Missing required fields");
     }
 
-    // Initialize Stripe
-    const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') ?? '', {
-      apiVersion: '2023-10-16',
-    })
+    logStep("Request data", { priceId, planName, billingType, planId });
 
-    // Get user details for the checkout
-    const { data: userData, error: userDataError } = await supabaseClient
-      .from('users')
-      .select('email, name')
-      .eq('id', user.id)
-      .single()
+    // Inicializar Stripe
+    const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "", {
+      apiVersion: "2023-10-16",
+    });
 
-    if (userDataError) {
-      console.error('Error fetching user data:', userDataError)
-      return new Response(JSON.stringify({ error: 'Error fetching user data' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500,
-      })
+    // Verificar se o usuário já tem assinaturas ativas
+    const existingCustomers = await stripe.customers.list({
+      email: payload.email,
+      limit: 1,
+    });
+
+    let customerId: string;
+    let existingSubscriptions: Stripe.Subscription[] = [];
+
+    if (existingCustomers.data.length > 0) {
+      customerId = existingCustomers.data[0].id;
+      logStep("Found existing customer", { customerId });
+      
+      // Buscar assinaturas ativas
+      const subscriptions = await stripe.subscriptions.list({
+        customer: customerId,
+        status: "active",
+      });
+      
+      existingSubscriptions = subscriptions.data;
+      logStep("Found existing subscriptions", { count: existingSubscriptions.length });
+    } else {
+      // Criar novo cliente
+      const customer = await stripe.customers.create({
+        email: payload.email,
+      });
+      customerId = customer.id;
+      logStep("Created new customer", { customerId });
     }
 
-    // Create metadata for the subscription
-    const metadata = {
-      user_id: user.id,
-      plan_name: planName || 'Subscription',
-      billing_type: billingType || 'monthly',
+    // Se há assinaturas existentes, marcar para cancelamento após nova assinatura
+    let subscriptionsToCancel: string[] = [];
+    if (existingSubscriptions.length > 0) {
+      subscriptionsToCancel = existingSubscriptions.map(sub => sub.id);
+      logStep("Will cancel existing subscriptions", { subscriptionsToCancel });
     }
 
-    // Check if user already has an active subscription
-    const { data: existingSubscription, error: subscriptionError } = await supabaseClient
-      .from('subscriptions')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('status', 'active')
-      .maybeSingle()
-
-    if (subscriptionError) {
-      console.error('Error checking existing subscription:', subscriptionError)
-    }
-
-    // If upgrading from one annual plan to another, preserve the granted_months_this_cycle
-    // This is crucial to avoid resetting the token grant cycle when upgrading
-    let preserveGrantedMonths = null
-    if (existingSubscription && billingType === 'annual' && existingSubscription.billing_type === 'annual') {
-      // Check in the renewal tracker table for the current cycle count
-      const { data: trackerData } = await supabaseClient
-        .from('annual_token_renewal_tracker')
-        .select('granted_months_this_cycle, next_token_grant_date')
-        .eq('stripe_subscription_id', existingSubscription.subscription_id)
-        .maybeSingle()
-
-      if (trackerData) {
-        preserveGrantedMonths = trackerData.granted_months_this_cycle
-        metadata.preserve_granted_months = preserveGrantedMonths.toString()
-        metadata.preserve_next_grant_date = trackerData.next_token_grant_date
-        
-        console.log('Preserving granted months for annual plan upgrade:', {
-          current_granted_months: preserveGrantedMonths,
-          next_grant_date: trackerData.next_token_grant_date
-        })
-      }
-    }
-
-    // Create a checkout session
+    // Criar sessão de checkout
+    const origin = req.headers.get("origin") || "http://localhost:3000";
+    
     const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
+      customer: customerId,
       line_items: [
         {
           price: priceId,
           quantity: 1,
         },
       ],
-      mode: 'subscription',
-      success_url: `${Deno.env.get('SITE_URL')}/dashboard?success=true`,
-      cancel_url: `${Deno.env.get('SITE_URL')}/tokens`,
-      customer_email: userData.email,
-      client_reference_id: user.id,
-      subscription_data: {
-        metadata,
+      mode: "subscription",
+      success_url: `${origin}/tokens/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${origin}/tokens/store`,
+      metadata: {
+        planId,
+        planName,
+        billingType,
+        userId: payload.sub,
+        subscriptionsToCancel: subscriptionsToCancel.join(','),
       },
-      metadata,
-    })
+    });
+
+    logStep("Checkout session created", { sessionId: session.id, url: session.url });
 
     return new Response(JSON.stringify({ url: session.url }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,
-    })
+    });
   } catch (error) {
-    console.error('Error creating checkout session:', error)
-    return new Response(JSON.stringify({ error: error.message }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logStep("ERROR in subscription-checkout", { message: errorMessage });
+    return new Response(JSON.stringify({ error: errorMessage }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 500,
-    })
+    });
   }
-})
+});

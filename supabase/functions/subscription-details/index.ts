@@ -9,43 +9,49 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "GET, OPTIONS"
 };
 
-// Define subscription plans locally instead of importing
+// Define subscription plans with tokens mapping
 const SUBSCRIPTION_PLANS = [
   // Plano Essencial - Mensal
   {
     id: 'essential-monthly',
     priceId: 'price_1RC6CKR5X4PxrShiX6BDVcfL',
     name: 'Essencial',
+    tokens: 48,
   },
   // Plano Essencial - Anual
   {
     id: 'essential-annual',
     priceId: 'price_1RKTGSR5X4PxrShi5pNwghGv',
     name: 'Essencial Anual',
+    tokens: 48,
   },
   // Plano Avançado - Mensal
   {
     id: 'advanced-monthly',
     priceId: 'price_1RKTHPR5X4PxrShij5V6JM8e',
     name: 'Avançado',
+    tokens: 96,
   },
   // Plano Avançado - Anual
   {
     id: 'advanced-annual',
     priceId: 'price_1RKTJFR5X4PxrShibGQspEse',
     name: 'Avançado Anual',
+    tokens: 96,
   },
   // Plano Elite - Mensal
   {
     id: 'elite-monthly',
     priceId: 'price_1RKTKOR5X4PxrShi0OZc2eOK',
     name: 'Elite',
+    tokens: 160,
   },
   // Plano Elite - Anual
   {
     id: 'elite-annual',
     priceId: 'price_1RKTL9R5X4PxrShi9FMIzYuM',
     name: 'Elite Anual',
+    tokens: 160,
   }
 ];
 

@@ -1,7 +1,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import Stripe from "https://esm.sh/stripe@13.9.0"; // Stripe v13
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
+import Stripe from "https://esm.sh/stripe@13.9.0?target=deno";
+import { authenticateRequest, createErrorResponse, createSuccessResponse, supabaseAdmin } from "../_shared/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -42,68 +42,30 @@ serve(async (req) => {
       httpClient: Stripe.createFetchHttpClient(),
     });
 
-    console.log("Checking authorization header");
-    // Pegando o token de autenticação
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      console.error("No authorization header found");
-      return new Response(JSON.stringify({ error: "Token de autenticação não fornecido" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    console.log("Authenticating request with custom JWT");
+    const auth = await authenticateRequest(req);
+    if (!auth) {
+      console.error("Authentication failed");
+      return createErrorResponse("Acesso não autorizado", 401);
     }
 
-    // Extraindo o token sem o prefixo Bearer
-    const token = authHeader.replace('Bearer ', '');
-    console.log("Auth token extracted");
-
-    // Criando o cliente Supabase com a chave de serviço
-    const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    if (!supabaseUrl || !supabaseServiceKey) {
-      console.error("Supabase URL or service key missing");
-      return new Response(JSON.stringify({ error: "Configuração do Supabase incompleta" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    console.log("Creating Supabase admin client");
-    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+    console.log(`User authenticated: ${auth.userId}`);
     
-    console.log("Verifying user from JWT");
-    // Verificando o JWT para obter informações do usuário
-    const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
-    if (userError || !user) {
-      console.error("User verification failed:", userError);
-      return new Response(JSON.stringify({ error: "Erro ao verificar usuário", details: userError }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    console.log(`User verified: ${user.id}`);
-    
+    // Buscar email do usuário no perfil
     const { data: profile, error: profileError } = await supabaseAdmin
       .from('profiles')
       .select('email')
-      .eq('id', user.id)
+      .eq('id', auth.userId)
       .single();
 
     if (profileError) {
       console.error("Error fetching user profile:", profileError);
-      return new Response(JSON.stringify({ error: "Erro ao obter perfil do usuário", details: profileError }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return createErrorResponse("Erro ao obter perfil do usuário");
     }
     
     if (!profile) {
       console.error("User profile not found");
-      return new Response(JSON.stringify({ error: "Perfil do usuário não encontrado" }), {
-        status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return createErrorResponse("Perfil do usuário não encontrado", 404);
     }
     
     console.log("Parsing request JSON");
@@ -119,7 +81,7 @@ serve(async (req) => {
     }
     
     const { tokens, amount, planName, custom = false } = requestData;
-    const userId = user.id; // Garantir que usamos o ID do usuário autenticado
+    const userId = auth.userId; // Usar o ID do usuário autenticado
     
     // Validações básicas
     if (!tokens || tokens <= 0) {
@@ -130,7 +92,7 @@ serve(async (req) => {
       });
     }
 
-    console.log(`Creating checkout for user ${user.id}, email ${profile.email}, tokens: ${tokens}`);
+    console.log(`Creating checkout for user ${auth.userId}, email ${profile.email}, tokens: ${tokens}`);
 
     // Se é uma compra personalizada, calcular o preço baseado na quantidade
     // Função para calcular desconto baseado na quantidade de tokens
@@ -266,6 +228,30 @@ serve(async (req) => {
       const calculatedAmount = Math.round(finalAmount * 100); // Converter para centavos para o Stripe
       console.log(`Final amount in cents: ${calculatedAmount}`);
       
+      // Log detalhado dos metadados que serão enviados
+      const sessionMetadata = {
+        user_id: userId,
+        tokens: tokens.toString(),
+        token_amount: tokens.toString(),
+        plan_name: planName || 'Custom',
+        custom_purchase: custom.toString()
+      };
+      
+      const paymentIntentMetadata = {
+        tokens: tokens.toString(),
+        token_amount: tokens.toString(),
+        user_id: userId,
+        session_context: 'token_purchase'
+      };
+      
+      console.log("📋 METADATA SENDO ENVIADO:", {
+        sessionMetadata,
+        paymentIntentMetadata,
+        finalAmount,
+        calculatedAmount,
+        tokens,
+        planName
+      });
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ['card'],
         line_items: [
@@ -283,23 +269,18 @@ serve(async (req) => {
         ],
         mode: 'payment',
         success_url: `${origin}/tokens/success?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${origin}/tokens/store`,
+        cancel_url: `${origin}/tokens`,
         customer: customerId,
         client_reference_id: userId,
+        metadata: sessionMetadata,
         payment_intent_data: {
-          metadata: {
-            token_amount: tokens.toString(),
-            user_id: userId,
-          },
+          metadata: paymentIntentMetadata,
         },
       });
 
       console.log(`Sessão de checkout criada: ${session.id}, URL: ${session.url}`);
 
-      return new Response(JSON.stringify({ url: session.url }), {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return createSuccessResponse({ url: session.url });
     } catch (stripeError) {
       console.error("Error creating Stripe checkout session:", stripeError);
       return new Response(JSON.stringify({ error: "Erro ao criar sessão de checkout", details: stripeError.message }), {

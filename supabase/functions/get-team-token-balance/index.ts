@@ -1,17 +1,43 @@
+
 // supabase/functions/get-team-token-balance/index.ts
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
-import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.38.4' // Use sua versão
+import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.38.4'
+import { verify } from 'https://deno.land/x/djwt@v3.0.2/mod.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, cache-control',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
 const logStep = (step: string, details?: unknown) => {
   const detailsStr = details ? ` - ${JSON.stringify(details)}` : '';
-  console.log(`[get-team-token-balance] ${new Date().toISOString()} | <span class="math-inline">\{step\}</span>{detailsStr}`);
+  console.log(`[get-team-token-balance] ${new Date().toISOString()} | ${step}${detailsStr}`);
 };
+
+// Função para verificar JWT customizado do Go Auth
+async function verifyGoAuthJWT(token: string) {
+  try {
+    const JWT_SECRET = Deno.env.get('JWT_SECRET');
+    if (!JWT_SECRET) {
+      throw new Error('JWT_SECRET não configurado');
+    }
+
+    const key = await crypto.subtle.importKey(
+      'raw',
+      new TextEncoder().encode(JWT_SECRET),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['verify']
+    );
+
+    const payload = await verify(token, key);
+    return payload;
+  } catch (error) {
+    console.error('JWT verification failed:', error);
+    return null;
+  }
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -36,16 +62,21 @@ serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401,
       });
     }
-    const jwt = authHeader.replace('Bearer ', '');
-    const { data: { user: requestingUser }, error: userError } = await supabaseAdmin.auth.getUser(jwt);
 
-    if (userError || !requestingUser) {
-      logStep('ERRO: Falha na autenticação do usuário.', { userError });
-      return new Response(JSON.stringify({ error: 'Usuário não autenticado ou token inválido.' }), {
+    const jwt = authHeader.replace('Bearer ', '');
+    
+    // Verificar o JWT customizado do Go Auth
+    const payload = await verifyGoAuthJWT(jwt);
+    
+    if (!payload || !payload.sub) {
+      logStep('ERRO: Falha na autenticação do usuário - token Go Auth inválido.');
+      return new Response(JSON.stringify({ error: 'Token de autenticação inválido.' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401,
       });
     }
-    logStep(`Usuário solicitante verificado: ${requestingUser.id}`);
+
+    const requestingUserId = payload.sub as string;
+    logStep(`Usuário solicitante verificado via Go Auth: ${requestingUserId}`);
 
     const { teamId } = await req.json();
     if (!teamId || typeof teamId !== 'string') {
@@ -61,7 +92,7 @@ serve(async (req) => {
       .from('team_members')
       .select('user_id')
       .eq('team_id', teamId)
-      .eq('user_id', requestingUser.id)
+      .eq('user_id', requestingUserId)
       .maybeSingle();
 
     if (memberCheckError) {
@@ -69,12 +100,12 @@ serve(async (req) => {
       throw new Error('Erro ao verificar permissão na equipe.');
     }
     if (!teamMember) {
-      logStep(`ACESSO NEGADO: Usuário ${requestingUser.id} não é membro da equipe ${teamId}.`);
+      logStep(`ACESSO NEGADO: Usuário ${requestingUserId} não é membro da equipe ${teamId}.`);
       return new Response(JSON.stringify({ error: 'Acesso negado. Você não é membro desta equipe.' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403,
       });
     }
-    logStep(`Usuário ${requestingUser.id} é membro da equipe ${teamId}.`);
+    logStep(`Usuário ${requestingUserId} é membro da equipe ${teamId}.`);
 
     // 2. Encontrar o proprietário (owner) da teamId
     const { data: ownerMember, error: ownerError } = await supabaseAdmin
